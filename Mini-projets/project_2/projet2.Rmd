@@ -21,7 +21,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 <FONT color='#0066CC'><FONT size = 4 >
 
 ::: {align="center"} 
-Fouille de données & Intelligence Artificielle\
+Fouille de données\
 
 PROJET 2 : ANALYSE FACTORIELLE DISCRIMINANTE SUR DONNÉES TEXTUELLES (NLP)
 
