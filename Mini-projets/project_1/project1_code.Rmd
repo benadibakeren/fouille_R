@@ -1,0 +1,234 @@
+---
+title: "Projet 1 – Classification bayésienne des émotions"
+author: "Benadiba Keren  & Zerroug Méliana "
+output:
+  html_document:
+    toc: true
+---
+
+# I- Introduction
+
+Ce projet s’inscrit dans le cadre du module **AP-4209 – Statistique bayésienne** et a pour
+objectif principal la mise en œuvre d’un **classificateur bayésien naïf** destiné à la
+prédiction des émotions à partir de textes en langage naturel.
+
+Le jeu de données utilisé provient de la plateforme Kaggle et se compose de phrases
+correspondant à différentes catégories émotionnelles comme la colère ou la peur.
+Avant de traiter ces données, il est nécessaire d'effectuer un ensemble d’étapes de prétraitement 
+afin de réduire le bruit et d’extraire les informations pertinentes. Ces étapes incluent notamment le
+nettoyage du texte, la tokenization, le stemming ou la lemmatization, ainsi que la
+vectorisation des données.
+
+L’étude a pour but de mettre en évidence
+les forces et les limites de l’approche bayésienne 
+dans notre contexte: la classification d’émotions.
+
+# II- Méthodologie
+
+Afin de préparer les données textuelles pour la modélisation, plusieurs étapes de
+prétraitement doivent être appliquées. Ces étapes visent à réduire le bruit du texte tout en
+conservant les informations les plus importantes. Le prétraitement est composé de plusieurs étapes. On commence par normaliser les données en mettant
+tout le texte en minuscule. Ensuite, nous supprimons les données inutiles telles que la ponctuation, les chiffres et les mots vides.
+Nous finirons par appliquer la tokenization et le stemming. Ces transformations permettent
+d’améliorer la qualité de la représentation vectorielle utilisée par le classificateur
+bayésien.
+
+**Interprétation**:
+L'analyse de la distribution des classes permet d’identifier un possible déséquilibre entre les classes d’émotions,
+ce qui pourrait influencer les performances du modèle de manière négative. 
+
+Après le prétraitement, les documents textuels sont transformés en une représentation 
+numérique à l’aide de la méthode TF-IDF. Cette méthode permet d'observer l’importance 
+des mots en fonction de leur fréquence dans un document et de leur rareté dans l’ensemble 
+du corpus.
+
+Les données sont divisées en un ensemble d’apprentissage et un ensemble de test dans le
+but d’évaluer les performances du modèle sur des données non vues lors de l’entraînement.
+
+Le modèle que nous allons utiliser est un **classificateur bayésien naïf**.
+
+```{r}
+
+library(e1071)
+library(caret)
+library(tm) #texte brut en texte numérique
+library(SnowballC) #stemming
+
+```
+
+## Chargement des données
+
+```{r}
+data <- read.csv("Emotion_classify_Data.csv", stringsAsFactors = FALSE)
+head(data)
+str(data)
+```
+
+## Analyse des données
+
+```{r}
+table(data$Emotion)
+barplot(table(data$Emotion),
+main = "Distribution des émotions",
+col = "steelblue",
+las = 2)
+```
+
+## Longueur de texte 
+
+```{r}
+
+names(data)
+data$text_length <- nchar(as.character(data[[1]]))
+summary(data$text_length)
+
+hist(data$text_length,
+breaks = 30,
+col = "lightblue",
+main = "Distribution de la longueur des textes",
+xlab = "Nombre de caractères")
+```
+
+
+```{r}
+
+# Création du corpus
+corpus <- VCorpus(VectorSource(data[[1]]))
+
+# Prétraitement
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+
+stop_words <- stopwords("en")
+negations <- c("not", "no", "never", "n't")
+stop_words_clean <- setdiff(stop_words, negations)
+
+corpus <- tm_map(corpus, removeWords, stop_words_clean)
+
+
+corpus
+```
+
+
+```{r}
+
+dtm <- DocumentTermMatrix(
+  corpus,
+  control = list(
+    weighting = weightTfIdf,
+    bounds = list(global = c(5, Inf))
+  )
+)
+
+
+dtm
+```
+
+```{r}
+set.seed(123)
+
+train_index <- sample(seq_len(nrow(dtm)), size = 0.8 * nrow(dtm))
+
+dtm_train <- dtm[train_index, ]
+dtm_test  <- dtm[-train_index, ]
+
+label_train <- data$Emotion[train_index]
+label_test  <- data$Emotion[-train_index]
+
+```
+
+---
+
+---
+
+
+```{r}
+
+model_nb <- naiveBayes(
+  as.matrix(dtm_train),
+  as.factor(label_train),
+  laplace = 1
+)
+
+predictions <- predict(
+  model_nb,
+  as.matrix(dtm_test)
+)
+
+```
+
+# Résultats
+
+```{r}
+conf_matrix <- confusionMatrix(
+  as.factor(predictions),
+  as.factor(label_test)
+)
+
+conf_matrix
+```
+
+
+```{r}
+#Indicateurs de performance
+conf_matrix$overall
+conf_matrix$byClass
+```
+
+
+# III- Résultats
+
+**Interprétation**:
+
+La matrice de confusion nous permet d'analyser les performances du classificateur bayésien naïf.
+
+L’émotion **anger** est relativement bien reconnue par le modèle, avec une sensibilité d’environ 0,63, 
+indiquant qu’une proportion importante des textes exprimant la colère est correctement classée. 
+Cependant, la spécificité associée à cette classe reste faible, ce qui révèle des confusions 
+persistantes avec les autres émotions. La balanced accuracy pour cette classe est d’environ 0,52, 
+traduisant des performances globalement moyennes.
+
+L’émotion **fear** présente des performances plus contrastées. Sa sensibilité est plus faible (environ 0,37), 
+cela indique que de nombreux textes exprimant la peur ne sont pas correctement identifiés. En revanche, 
+sa spécificité est plus élevée, ce qui signifie que le modèle commet moins de faux positifs pour cette classe. 
+La balanced accuracy obtenue est également proche de 0,52, montrant une capacité de discrimination limitée 
+mais stable.
+
+L’émotion **joy** reste la plus difficile à détecter pour le modèle. Bien que sa spécificité soit élevée, la 
+sensibilité demeure faible (environ 0,08), ce qui indique que peu de textes exprimant la joie sont correctement 
+classés. Néanmoins, par rapport aux versions précédentes du modèle, on observe une légère amélioration de la 
+détection de cette classe. La balanced accuracy associée à **joy** est proche de 0,51, ce qui correspond à des 
+performances proches de celles d’un classificateur aléatoire.
+
+De manière globale, les résultats montrent une amélioration de la détection des émotions par rapport 
+aux premières versions du modèle. Cela est dû à l’introduction d’un prétraitement plus stricte, notamment avec la conservation 
+des termes de négation. Cela permet d’obtenir des performances plus stables, bien que l'on puisse observer de véritables limites 
+concernant le classificateur bayésien naïf pour la reconnaissance des émotions dans des textes.
+
+# IV- Discussion
+
+Les résultats obtenus montrent que le classificateur bayésien naïf, combiné à la représentation 
+TF-IDF, est capable d’identifier certaines émotions à partir des textes, mais avec différentes performances selon les classes. 
+L’analyse effectuée précédemment montre que ce modèle a une bonne capacité à détecter l’émotion **fear**, tandis que d’autres émotions, 
+comme **joy**, sont beaucoup plus difficiles à reconnaître. Ces différences s’expliquent par le vocabulaire varié utilisé dans les textes.
+
+Le classificateur bayésien naïf repose sur une hypothèse d’indépendance entre les mots 
+qui ne permet pas de modéliser des textes avec du vocabulaire trop complexe. De plus, le déséquilibre 
+entre les classes d’émotions impacte les résultats en avantagent les émotions les plus représentées.
+
+Ces observations montrent que des méthodes simples peuvent fournir des résultats corrects et facilement
+interprétables, tout en révélant rapidement leurs limites lorsque les données deviennent plus complexes, 
+comme c’est le cas pour la classification d’émotions à partir de textes.
+
+# V- Conclusion et perspectives
+
+Ce projet a permis de mettre en place une méthode complète de classification
+d’émotions à partir de données textuelles en utilisant une approche bayésienne. Le
+classificateur bayésien naïf s’est montré efficace tout en restant simple à mettre en
+œuvre et facile à interpréter.
+
+Pour améliorer les performances du modèle, plusieurs options peuvent être envisagées.
+Nous pourrions favoriser l’utilisation de groupes de mots plutôt que de mots isolés. Il serait
+également intéressant d'avoir une meilleure prise en compte du déséquilibre entre les classes.
