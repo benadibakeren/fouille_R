@@ -1,0 +1,205 @@
+---
+title: "<FONT color='#0066CC'><FONT size = 4 ><DIV align= center> AP-4209 ESIEE-Paris: 2025 - 2026 </DIV></FONT></FONT>"
+output:
+  html_document:
+    highlight: textmate
+    theme: readable
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+---
+
+<style type="text/css">
+body, td {font-size: 15px;}
+code.r{font-size: 12px;}
+pre { font-size: 12px;}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+<FONT color='#0066CC'><FONT size = 4 >
+
+::: {align="center"} Fouille de données\
+
+PROJET 3 : CLASSIFICATION BAYÉSIENNE ET ANALYSE FACTORIELLE DISCRIMINANTE
+
+-- Classification des Thèses de Doctorat Françaises -- :::
+
+</FONT></FONT>
+
+<FONT color='#0066CC'><FONT size = 4 >
+
+::: {align="center"} 
+Auteurs : Meliana ZERROUG, Keren BENADIBA-- ESIEE Paris 
+:::
+
+</FONT></FONT>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 1. Introduction et Objectifs </FONT></FONT>
+
+Dans ce projet, nous allons nous intéresser à la classification de thèses de doctorat françaises à partir de leurs résumés.
+Le jeu de données utilisé provient de Kaggle.
+Nous commencerons par charger les données contenant les résumés des thèses. Ensuite, le texte est nettoyé en supprimant les mots inutiles (stopwords), la ponctuation, et en appliquant un stemming ou une lemmatisation. Après ce nettoyage, le texte est transformé en données numériques grâce à des méthodes de vectorisation comme TF-IDF. Puis, nous extrayons les caractéristiques les plus importantes et nous réduisons la dimension des données en utilisant l’analyse factorielle discriminante (AFD). Enfin, un classifieur bayésien naïf est entraîné à partir des données obtenues, puis évalué à l’aide de la validation croisée et de différentes mesures de performance.
+
+</DIV>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+<DIV align = justify>
+
+<FONT color='#0066CC'><FONT size = 4> 2. Méthodologie </FONT></FONT>
+<FONT color='#0066CC'><FONT size = 3> 2.1 Chargement des données </FONT></FONT>
+
+Nous utilisons donc le jeu de données des thèses françaises. Nous allons donc d'abord charger les bibliothèques nécessaires. 
+
+*  **Installation des packages nécessaires :**  
+
+```{r}
+
+if(!require("dplyr")) install.packages("dplyr")
+if(!require("kableExtra")) install.packages("kableExtra")
+if(!require("tm")) install.packages("tm")
+if(!require("MASS")) install.packages("MASS") 
+if(!require("e1071")) install.packages("e1071") 
+if(!require("topicmodels")) install.packages("topicmodels") 
+if(!require("caret")) install.packages("caret") 
+
+```
+
+*  **Chargement des packages nécessaires :**
+
+```{r}
+
+library(dplyr)
+library(kableExtra)
+library(tm)
+library(MASS)
+library(e1071)
+library(topicmodels)
+library(caret)
+
+```
+
+*  **Première étape :**
+
+```{r}
+file.remove("THESE_DATASET.Rda")
+file.remove("THESE_CLEAN.Rda")
+
+rm(list = ls())
+
+```
+
+*  **Seconde étape :**
+
+```{r}
+df_temp <- read.csv("french_thesis_20231021_metadata.csv")
+save(df_temp, file = "THESE_DATASET.Rda")
+
+```
+
+*  **Troisième étape :**
+
+```{r}
+
+rm(df_temp)
+rm(list = ls())
+load("THESE_DATASET.Rda")
+colnames(df_temp)
+head(df_temp)
+
+```
+
+*  **Vérification du nombre de descriptions vides  :**
+
+```{r}
+
+nb_vide <- sum(df_temp$Description == "")
+nb_na <- sum(is.na(df_temp$Description))
+
+total_lignes <- nrow(df_temp)
+total_inutiles <- nb_vide + nb_na
+
+cat("Nombre total de lignes :", total_lignes, "\n")
+cat("--- \n")
+cat("Total à supprimer :", total_inutiles, "\n")
+
+```
+
+
+*  **Quatrième étape :**
+
+```{r}
+
+df_clean <- df_temp %>%
+  dplyr::rename(Subject = Domain, 
+                Texte = Description) %>% 
+  dplyr::select(Subject, Texte)
+
+#On va enlever les lignes vides car il y a quelques descriptions vides
+
+df_clean <- df_clean %>% 
+  filter(!is.na(Texte) & Texte != "" & Texte != " ")
+
+cat("Nombre de lignes après le nettoyage : ", nrow(df_clean), "\n")
+
+set.seed(123)
+df_clean <- df_clean %>%
+            sample_n(100000)
+
+kable(head(df_clean), caption = "Jeu de données") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
+
+```
+
+*  **Cinquième étape :**
+
+```{r}
+
+#On va maintenant enregistrer le nouveau dataframe et on nettoie 
+
+save(df_clean, file = "THESE_CLEAN.Rda")
+rm(df_clean, df_temp)
+file.remove("THESE_DATASET.Rda")
+
+```
+
+*  **Sixième étape :**
+
+```{r}
+
+#On charge le nouveau jeu de données 
+rm(list = ls())
+load("THESE_CLEAN.Rda")
+colnames(df_clean)
+
+```
+
+*  **Septième étape :**
+
+```{r}
+
+#Présentation des données finales 
+
+kable(head(df_clean), caption = "Jeu de données") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
+
+```
+
+<FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD et le Bayésien (NLP) </FONT></FONT>
+
+<DIV align = justify>
+
+Maintenant on va passer au traitement du texte. L'objectif va être de transformer les résumés en données numériques. Contrairement au mini projet 2 (Twitter), nous devions
+traiter de l'anglais, ici nous allons devoir traiter du français donc il va falloir gérer les accents et des mots vides différents. 
