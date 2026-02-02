@@ -1,0 +1,11 @@
+# Fichiers volumineux
+Mini-projets/project_3/french_thesis_20231021_metadata.csv
+
+# Historique et fichiers R
+.Rhistory
+.RData
+.Rproj.user
+
+# Fichiers système
+.DS_Store
+Thumbs.db

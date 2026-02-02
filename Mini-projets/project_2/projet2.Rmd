@@ -1,0 +1,391 @@
+---
+title: "<FONT color='#0066CC'><FONT size = 4 ><DIV align= center> AP-4209 ESIEE-Paris: 2025 - 2026 </DIV></FONT></FONT>"
+output:
+  html_document:
+    highlight: textmate
+    theme: readable
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+---
+
+<style type="text/css">
+body, td {font-size: 15px;}
+code.r{font-size: 12px;}
+pre { font-size: 12px;}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+<FONT color='#0066CC'><FONT size = 4 >
+
+::: {align="center"} 
+Fouille de données\
+
+PROJET 2 : ANALYSE FACTORIELLE DISCRIMINANTE SUR DONNÉES TEXTUELLES (NLP)
+
+-- Twitter Entity Sentiment Analysis -- 
+:::
+
+</FONT></FONT>
+
+<FONT color='#0066CC'><FONT size = 4 >
+
+::: {align="center"} 
+Auteur : Meliana ZERROUG, Keren BENADIBA-- ESIEE Paris 
+:::
+
+</FONT></FONT>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 1. Introduction et Objectifs </FONT></FONT>
+
+Le but de ce projet est d'appliquer l'Analyse Factorielle Discriminante (AFD) sur des données textuelles. Nous allons travailler sur un jeu de données composé de tweets pour voir si l'AFD est capable de bien séparer et visualiser les différents sentiments (comme positif, négatif, neutre, etc.).
+
+Pour réaliser ce projet, nous avons suivi plusieurs étapes. Tout d’abord, nous avons chargé et nettoyé les données afin de les rendre exploitables. Ensuite, nous avons transformé les tweets en données numériques à l’aide de la méthode TF-IDF, en y ajoutant un score de sentiment. Une fois cette préparation terminée, nous avons appliqué l’Analyse Factorielle Discriminante (AFD), implémentée à l’aide de la fonction LDA du package MASS. Enfin, nous avons visualisé les résultats sur des graphiques et évalué la performance du modèle à l’aide de la précision.
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 2. Méthodologie </FONT></FONT>
+
+Dans cette partie, on prépare nos données. Comme on travaille sur du texte (des tweets), on ne peut pas les envoyer directement 
+dans l'algorithme mathématique. Il faut d'abord nettoyer le texte et le transformer en chiffres exploitables pour l'AFD. 
+
+<FONT color='#0066CC'><FONT size = 3> 2.1 Chargement des données </FONT></FONT>
+
+On utilise le dataset Twitter Entity Sentiment Analysis récupéré sur Kaggle. On commence par charger les paquets nécessaires. 
+
+
+*  **Installation des packages nécessaires :**  
+
+```{r}
+
+if(!require("dplyr")) install.packages("dplyr")
+if(!require("kableExtra")) install.packages("kableExtra")
+if(!require("tm")) install.packages("tm")
+if(!require("MASS")) install.packages("MASS") 
+
+```
+
+*  **Chargement des packages nécessaires :**
+
+```{r}
+
+library(dplyr)
+library(kableExtra)
+library(tm)
+library(MASS)
+
+```
+
+*  **Première étape :**
+
+```{r}
+
+# On nettoie d'abord notre environnement (c'est un nettoyage ciblé c'est pour ça qu'on utilise pas rm list)
+
+file.remove("TWITTER_DATASET.Rda")
+file.remove("TWITTER_CLEAN.Rda")
+rm(list = ls())
+rm(data)
+rm(df)
+rm(df_temp)
+
+```
+
+*  **Seconde étape :**
+
+```{r}
+# Ici on va convertir notre fichier csv en rda (meilleure gestion sur R)
+df_temp <- read.csv("twitter_training.csv", header = FALSE)
+df_val_temp <- read.csv("twitter_validation.csv", header = FALSE)
+
+save(df_temp, df_val_temp, file = "TWITTER_DATASET.Rda")
+
+```
+
+*  **Troisième étape :**
+
+Les données sont les suivantes : 
+
+```{r,echo = T,  warning = F}
+# On souhaite maintenant afficher les données 
+rm(df_temp, df_val_temp) # On doit le supprimer pour être sur que quand on l'utilise il vient de notre fichier et non de l'historique en quelque sorte 
+rm(list = ls())
+load("TWITTER_DATASET.Rda") 
+library(kableExtra)
+library(dplyr) # sert à manipuler et transformer les tableaux de données
+
+colnames(df_temp)
+head(df_temp) 
+```
+
+*  **Quatrième étape :**
+
+```{r,   warning = F}
+# on va réarranger un peu les données 
+df_train <- df_temp %>%
+  rename(ID = V1, 
+         Subject = V2, 
+         Sentiment = V3, 
+         Texte = V4) %>% 
+ dplyr::select(Subject, Sentiment, Texte) 
+
+df_train$Type <- "Train" 
+
+df_test <- df_val_temp %>%
+  rename(ID = V1, Subject = V2, Sentiment = V3, Texte = V4) %>% 
+  dplyr::select(Subject, Sentiment, Texte)
+
+df_test$Type <- "Test"
+
+#on est obligé de fusionner pour que le TF-IDF fonctionne sur les deux fichiers
+df <- rbind(df_train, df_test)
+
+# on l'affiche
+head(df)
+```
+
+*  **Cinquième étape :**
+
+```{r,   warning = F}
+# On enregistre le nouveau dataframe transformé et on nettoie
+save(df, file = "TWITTER_CLEAN.Rda")
+rm(df, df_train, df_test, df_temp, df_val_temp)
+file.remove("TWITTER_DATASET.Rda") # on supprime l'ancien fichier
+
+```
+
+*  **Sixième étape :**
+
+```{r,echo = T,  warning = F}
+# On charge le nouveau jeu de données 
+rm(list = ls()) # supression de tous les objets en mémoire
+load("TWITTER_CLEAN.Rda")
+
+colnames(df)
+head(df)
+```
+
+*  **Septième étape :**
+
+```{r,   warning = F}
+# Présentation des données finales
+library(kableExtra)
+kable(head(df,100), caption = "Extrait du jeu de données") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center") %>%
+  scroll_box(height = "400px", width = "100%")
+```
+
+<FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD (NLP) </FONT></FONT>
+
+<DIV align = justify>
+
+Maintenant on peut passer au traitement du texte. L'objectif va être de transformer les phrases en un tableau de fréquences de mots pour que l'algorithme puisse travailler. 
+On va utiliser la méthode TF-IDF. Elle donne un score aux mots, c'est à dire que plus un mot sera rare et spécifique plus il aura de poids. 
+On va ensuite réduire la taille de la matrice en supprimant les mots qui apparaissent trop rarement.
+
+```{r,   warning = F}
+library(syuzhet)
+library(stringr)
+
+
+stopwords <- setdiff(stopwords("english"), c("no", "not", "nor", "never", "none", "t", "can", "cant"))
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+
+clean_text_basic <- removeURL(df$Texte)
+
+sentiment_score <- get_sentiment(clean_text_basic, method = "syuzhet")
+
+corpus <- VCorpus(VectorSource(df$Texte))
+
+corpus <- tm_map(corpus, content_transformer(removeURL))
+
+corpus <- tm_map(corpus, content_transformer(tolower)) 
+corpus <- tm_map(corpus, removePunctuation)                          
+corpus <- tm_map(corpus, removeWords, stopwords)
+corpus <- tm_map(corpus, stripWhitespace)
+
+dtm <- DocumentTermMatrix(corpus, control = list(weighting = weightTfIdf))
+dtm_mid <- removeSparseTerms(dtm, 0.98) 
+data_tfidf <- as.data.frame(as.matrix(dtm_mid))
+
+dummies_subject <- as.data.frame(model.matrix(~ df$Subject - 1))
+data_all <- cbind(data_tfidf, dummies_subject)
+data_all$LexicalScore <- sentiment_score
+
+
+data_all$Sentiment <- df$Sentiment
+data_all$Type      <- df$Type
+
+#On va séparer les fichiers et prendre un échantillon 
+set.seed(123)
+data_train_all <- subset(data_all, Type == "Train")
+data_train <- data_train_all %>% sample_n(50000) %>% dplyr::select(-Type)
+data_test  <- subset(data_all, Type == "Test")  %>% dplyr::select(-Type)
+
+rm(data_train_temp, data_all, corpus, dtm, dtm_mid, data_tfidf, dummies_subject, clean_text_basic, sentiment_score, word_count)
+
+```
+
+Cette étape est donc vraiment importante, car elle permet de transformer des données brutes et non structurées en vecteurs numériques qui sera ensuite utilisable par l'AFD.
+Tout d'abord nous avons supprimer les bruits, donc on a crée une fonction qui permet de supprimer les URLs qui n'apportent pas d'information sentimentale.
+Nous avons ensuite exclu les termes de négation de la liste des mots vides avant de les supprimer. Car quand on souhaite analyser un sentiment la suppression de "not" dans la phrase "I am not happy" par exemple inverse totalement le sens il faut donc bien penser à garder ces mots là lorsque l'on supprime les mots vides. 
+
+Pour aider l'AFD nous avons également calculé un score de sentiment en utilisant le dictionnaire Syuzhet. La variable LexicalScore que nous avons créee va permettre de donner une valeur numérique directement basée sur le vocabulaire anglais.
+
+Ensuite nous avons utilisé la vectorisation TF-IDF qui permet de pénaliser les mots trop courants et valorise les mots rares. 
+Pour évier d'avoir une atrice avec des milliers de colonnes inutiles, nous avons supprimé les termes qui apparaissent dans moins de 2% des documents cela va permettre de réduire le bruit et le temps de calcul. 
+
+Le sentiment d'un mot dépend souvent du contexte par exemple le mot "kill" est neutre dans un jeu vidéo mais il va être négatif dans un autre contexte. On a donc transformé la colonne Subject en variables binaires pour que l'AFD puisse relier le vocabulaire au sujet traité. 
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 3. Implémentation de l'AFD </FONT></FONT>
+
+L'Analyse Factorielle Discriminante (AFD) est la méthode centrale de notre projet. Son choix pour ce projet est justifié car il s'agit d'une méthode d'analyse supervisée, ce qui est indispensable pour répondre à la problématique de notre projet. 
+L'AFD va utiliser la colonne "Sentiment" pour construire ses axes. L'objectif n'est pas juste de résumer l'information contenue dans les tweets, mais on souhaite trouver les combinaisons de mots qui vont permettre 
+d'opposer le plus efficacement possible les sentiments positifs, négatifs et neutres. 
+
+Mathématiquement parlant l'algorithme fonctionne en optimisant le critère de Fisher. POur que la séparation soit correcte, il faut maximiser la variance inter-classes, donc faire en sorte que le centre de gravité du groupe "Positif" soit le plus loin possible du centre du groupe "Négatif", et ensuite il faut minimiser la variance intra-classe pour que tous les tweets d'un même sentiment restent groupés entre eux. C'est comme cela que l'AFD va pouvoir déterminer les frontières les plus exactes possibles. 
+Cette méthode est donc particulièrement intéressante pour notre cas car après notre étape de TF-IDF, on se retrouve avec une matrice immense qui contient des milliers de colonnes qui correspondent à chaque mot du vocabulaire. L'AFD va donc condenser toute cette information en un plan factoriel avec une dimension beaucoup plus réduite. 
+Cela va nous permettre de visualiser graphiquement si le vocabualire utilisé suffit à faire la distinction entre les sentiments. 
+
+```{r,   warning = F}
+library(MASS)
+
+modele_lda <- lda(Sentiment ~ ., data = data_train)
+
+inertie <- round(modele_lda$svd^2 / sum(modele_lda$svd^2) * 100, 2)
+
+#on nomme les axes 
+names(inertie) <- paste0("Axe ", 1:length(inertie))
+
+kable(inertie, col.names = "Inertie (%)", caption = "Pourcentage de variance expliquée par axe") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+
+```
+
+L'Axe 1 est le plus important car il représente plus de 52.46% de l'information. Dans notre cas c'est surement cet axe qui fait la différence entre les mots positifs et négatifs. Les axes 2 et 3 se partagent le reste et ils servent probablement à distinguer les tweets neutres ou ceux qui sont hors-sujet ("irrelevant").
+Comme les deux premiers axes expliquent presque 80% du problème donc notre graphique en 2D sera déjà une bonne représentation de la réalité. 
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 4. Résultats </FONT></FONT>
+
+#### <FONT color='#0066CC'><FONT size = 3> 4.1. Visualisation Graphique </FONT></FONT>
+
+Nous allons ensuite utiliser la fonction que nous avions crée dans le TD 3 afin de visualiser la projection des tweets. 
+Comme nous avons 4 catégories de sentiments, l'AFD produit 3 axes discriminants. 
+
+```{r,   warning = F}
+library(ggplot2)
+
+AFD_graph<- function(scores_df, x_axis, y_axis, title) {
+  centers <- aggregate(scores_df[, c(x_axis, y_axis)], list(Class = scores_df$Class), mean)
+  colnames(centers)[1] <- "Class" # On s'assure que la colonne s'appelle Class
+  
+  ggplot(scores_df, aes_string(x = x_axis, y = y_axis, color = "Class")) +
+    geom_point(size = 2, alpha = 0.6) + 
+    geom_point(data = centers, aes_string(x = x_axis, y = y_axis, color = "Class"), 
+               shape = 13, size = 5, stroke = 2, color = "black") + 
+    labs(title = title,
+         subtitle = paste("Projection sur", x_axis, "et", y_axis),
+         x = x_axis, y = y_axis) +
+    theme_minimal() +
+    theme(legend.position = "right")
+}
+
+prediction <- predict(modele_lda, data_train)
+scores_df <- data.frame(prediction$x)
+
+colnames(scores_df) <- c("Axe1", "Axe2", "Axe3")
+scores_df$Class <- data_train$Sentiment
+
+
+AFD_graph(scores_df, "Axe1", "Axe2", "Plan Factoriel")
+
+```
+
+On remarque que l'Axe 1 sépare bien les opposés, on voit bien que les points "Positive" sont d'un côté et les "Negative" sont de l'autre. C'est cohérent avec l'inertie que nous avons trouvé.
+Au centre on remarque que c'est beaucoup plus mélangé et les catégories "Neutral" et "Irrelevant" se chevauchent beaucoup. Cela parait logique car les tweets utilisent souvent des mots banals donc l'algorithme a du mal à les différencier. 
+On remarque également que les groupes ne sont pas parfaitement séparés (en effet les couleurs se mélangent). On peut donc comprendre qu'avec de simple mots on ne peut pas toujours deviner le sentiment exact. 
+
+
+#### <FONT color='#0066CC'><FONT size = 3> 4.2. Évaluation des performances </FONT></FONT>
+
+Afin de valider statistiquement notre modèle nous allons calculer la matrice de confusion. Elle va nous permettre de comparer les prédictions du modèle par rapport à la réalité 
+
+```{r,   warning = F}
+library(caret)
+
+pred_test <- predict(modele_lda, data_test)
+
+cm <- confusionMatrix(data = factor(pred_test$class), 
+                      reference = factor(data_test$Sentiment))
+
+print(cm$table)
+cat("\nPrécision sur les nouvelles données \n")
+cat(round(cm$overall['Accuracy'] * 100, 2), "%")
+```
+
+On remarque que l'on obtient une précision de 47.9%, cela peut paraître bas mais il faut se rappeler qu'on a 4 choix possibles. Si on répondait au hasard, on aurait 25% de chances de répondre correctement. Donc notre modèle est presque deux fois meilleur que le hasard.
+
+Lorsque l'on observe la matrice de confusion on remarque que le modèle ne se trompe pas beaucoup sur les sentiments forts.
+Il a résussi à bien classer 145 tweets positifs et 141 négatifs. La catégorie "Irrelevant" pose problème, on a seulement 74 bonnes réponses. Le modèle confond souvent "Neutre" avec " Negatif" ou "Positif". 
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 5. Discussion et Conclusion </FONT></FONT>
+
+Dans ce projet, nous avons voulu voir si l'Analyse Factorielle Discriminante (AFD) était efficace pour pouvoir analyser des sentiments sur Twitter. 
+Nous avons obtenu une précision finale proche de 48% donc on peut dire que la méthode fonctionne plutôt correctement pour dégager les grandes tendances mais cette méthode a quand même ses limites. 
+
+On a pu remarquer que le nettoyage des données était très important car sans tout le nettoyage, afin de tester le modèle sans aucune préparation on était à environ moins de 30% de précision ce qui signifie que notre modèle était presque pire que le hasard. 
+En effet lorsque l'on a rajouté l'ajout du score de sentiment (LexicalScore) et la prise en compte du contexte, les résultats étaient plus bons. Cela nous prouve que l'algorithme a besoin qu'on l'aide en lui donnant un contexte et en préparant bien les données en amont. 
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 6. Travaux futurs </FONT></FONT>
+
+Si l'on devait poursuire ce projet pour dépasser la barre des 48% de précision, il faudrait je pense arreter l'approche statistique classique (AFD sur TF-IDF) pour passer au Deep Learning. 
+
+En faisant quelques recherches sur Kaggle nous sommes tombées sur un projet très intéressant qui utilise DistilBERT.
+La méthode ne consiste pas seulement à compter la fréquence des mots, elle essaye également de comprendre le sens de la phrase, avec DistilBERT le modèle peut comprendre que le not est l'inverse de happy. 
+On remarque qu'avec leur méthode ils ont pu avoir une précision de plus de 93% voici le projet réalisé https://www.kaggle.com/code/shtrausslearning/twitter-emotion-classification/notebook
+
+</DIV> 
+
+
