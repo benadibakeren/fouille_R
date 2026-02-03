@@ -20,11 +20,13 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 <FONT color='#0066CC'><FONT size = 4 >
 
-::: {align="center"} Fouille de données\
+::: {align="center"} 
+Fouille de données\
 
 PROJET 3 : CLASSIFICATION BAYÉSIENNE ET ANALYSE FACTORIELLE DISCRIMINANTE
 
--- Classification des Thèses de Doctorat Françaises -- :::
+-- Classification des Thèses de Doctorat Françaises -- 
+:::
 
 </FONT></FONT>
 
@@ -58,7 +60,7 @@ Nous commencerons par charger les données contenant les résumés des thèses. 
 
 ### <FONT color='#0066CC'><FONT size = 4> 2. Méthodologie </FONT></FONT>
 
-<FONT color='#0066CC'><FONT size = 3> 2.1 Chargement des données </FONT></FONT>
+#### <FONT color='#0066CC'><FONT size = 3> 2.1 Chargement des données </FONT></FONT>
 
 Nous utilisons donc le jeu de données des thèses françaises. Nous allons donc d'abord charger les bibliothèques nécessaires. 
 
@@ -264,7 +266,7 @@ kable(head(df_clean), caption = "Jeu de données") %>%
 ```
 
 
-<FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD et le Bayésien (NLP) </FONT></FONT>
+#### <FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD et le Bayésien (NLP) </FONT></FONT>
 
 <DIV align = justify>
 
@@ -322,7 +324,7 @@ cat("Nombre de termes uniques :", ncol(tfidf_data), "\n")
 
 ```{r}
 
-# Calculer la variance de chaque terme et sélectionner les top 20 (au lieu de 100)
+# Calculer la variance de chaque terme et sélectionner les tops 
 variances <- apply(tfidf_data, 2, var)
 top_indices <- order(variances, decreasing = TRUE)[1:min(200, length(variances))]
 tfidf_data_reduced <- tfidf_data[, top_indices]
@@ -351,7 +353,7 @@ print(table_dist)
 
 ```
 
-<FONT color='#0066CC'><FONT size = 3> 2.3 Analyse Factorielle Discriminante (AFD) </FONT></FONT>
+#### <FONT color='#0066CC'><FONT size = 3> 2.3 Analyse Factorielle Discriminante (AFD) </FONT></FONT>
 
 <DIV align = justify>
 
@@ -497,7 +499,7 @@ print(model_cv)
 
 ```
 
-<FONT color='#0066CC'><FONT size = 3> 3.1 Évaluation des performances </FONT></FONT>
+#### <FONT color='#0066CC'><FONT size = 3> 3.1 Évaluation des performances </FONT></FONT>
 
 Une fois que le modèle a été entrainé sur les 10 blocs nous allons maintenant regarder la moyenne des résultats. 
 L' accuracy va nous permettre de nous indiquer quel est le pourcentage de thèses qui sont correctement classées parmi toutes les disciplines. 
