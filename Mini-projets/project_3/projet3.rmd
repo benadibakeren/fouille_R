@@ -20,11 +20,13 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 <FONT color='#0066CC'><FONT size = 4 >
 
-::: {align="center"} Fouille de données\
+::: {align="center"} 
+Fouille de données\
 
 PROJET 3 : CLASSIFICATION BAYÉSIENNE ET ANALYSE FACTORIELLE DISCRIMINANTE
 
--- Classification des Thèses de Doctorat Françaises -- :::
+-- Classification des Thèses de Doctorat Françaises -- 
+:::
 
 </FONT></FONT>
 
@@ -56,8 +58,9 @@ Nous commencerons par charger les données contenant les résumés des thèses. 
 
 <DIV align = justify>
 
-<FONT color='#0066CC'><FONT size = 4> 2. Méthodologie </FONT></FONT>
-<FONT color='#0066CC'><FONT size = 3> 2.1 Chargement des données </FONT></FONT>
+### <FONT color='#0066CC'><FONT size = 4> 2. Méthodologie </FONT></FONT>
+
+#### <FONT color='#0066CC'><FONT size = 3> 2.1 Chargement des données </FONT></FONT>
 
 Nous utilisons donc le jeu de données des thèses françaises. Nous allons donc d'abord charger les bibliothèques nécessaires. 
 
@@ -262,11 +265,8 @@ kable(head(df_clean), caption = "Jeu de données") %>%
 
 ```
 
-<FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD et le Bayésien (NLP) </FONT></FONT>
 
-<DIV align = justify>
-
-<FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD et le Bayésien (NLP) </FONT></FONT>
+#### <FONT color='#0066CC'><FONT size = 3> 2.2 Préparation pour l'AFD et le Bayésien (NLP) </FONT></FONT>
 
 <DIV align = justify>
 
@@ -324,9 +324,9 @@ cat("Nombre de termes uniques :", ncol(tfidf_data), "\n")
 
 ```{r}
 
-# Calculer la variance de chaque terme et sélectionner les top 20 (au lieu de 100)
+# Calculer la variance de chaque terme et sélectionner les tops 
 variances <- apply(tfidf_data, 2, var)
-top_indices <- order(variances, decreasing = TRUE)[1:min(20, length(variances))]
+top_indices <- order(variances, decreasing = TRUE)[1:min(200, length(variances))]
 tfidf_data_reduced <- tfidf_data[, top_indices]
 
 cat("Dimensions après réduction :", nrow(tfidf_data_reduced), "x", ncol(tfidf_data_reduced), "\n")
@@ -353,7 +353,7 @@ print(table_dist)
 
 ```
 
-<FONT color='#0066CC'><FONT size = 3> 2.3 Analyse Factorielle Discriminante (AFD) </FONT></FONT>
+#### <FONT color='#0066CC'><FONT size = 3> 2.3 Analyse Factorielle Discriminante (AFD) </FONT></FONT>
 
 <DIV align = justify>
 
@@ -397,7 +397,7 @@ result_afd[, 2] <- (lda_model$svd[1:n_axes]^2 / sum(lda_model$svd^2)) * 100
 # Corrélations canoniques
 result_afd[, 3] <- sqrt(lda_model$svd[1:n_axes]^2 / (1 + lda_model$svd[1:n_axes]^2))
 
-# Wilks Lambda (produit cumulatif)
+# Wilks Lambda 
 result_afd[, 4] <- cumprod(1 - result_afd[, 3]^2)
 
 # Khi-deux
@@ -413,9 +413,9 @@ result_afd_df <- data.frame(result_afd)
 colnames(result_afd_df) <- c("Valeur propre", "% Inertie", "Corrélation", "Wilks Lambda", "Khi-deux", "p-value")
 rownames(result_afd_df) <- paste0("Axe ", 1:n_axes)
 
-cat("\n=== TABLEAU RÉCAPITULATIF DE L'AFD (Tests de Wilks) ===\n")
-print(result_afd_df)
-
+kable(result_afd_df, caption = "Tests de Wilks") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
 ```
 
 *  **Visualisation avec ggplot2 (centres de gravité) :**
@@ -454,102 +454,121 @@ ggplot(plot_data_gg, aes(x = LD1, y = LD2, colour = Class)) +
 
 ```
 
-<FONT color='#0066CC'><FONT size = 3> 2.4 Classification par distance aux centres de gravité </FONT></FONT>
+</DIV>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+### <FONT color='#0066CC'><FONT size = 4> 3. Classification Bayésienne Naïve </FONT></FONT>
 
 <DIV align = justify>
+Nous passons maintenant à l'une des dernières étapes, l'objectif est de prédire la discipline de la thèse en utilisant les informations condensées par l'AFD. 
 
-Au lieu d'utiliser un Bayésien Naïf, nous utilisons la méthode de classification supervisée basée sur l'AFD : chaque individu est affecté à la classe dont le centre de gravité est le plus proche dans le plan factoriel.
+Pour cela, nous allons utiliser les scores factoriels (colonnes contenues dans notre tableau df_lda).
+Nous allons appliquer le théorème de Bayes sur les composantes de l'AFD. L'utilisation des axes de l'AFD est idéale car ils sont orthogonaux, ce qui respecte l'hypothèse d'indépendance du classifieur Bayésien Naïf. 
+
+Pour évaluer notre modèle nous n'allons pas juste faire le découpage habituel apprentissage / Test, nous allons utiliser la validation croisée. Cela veut donc dire qu'on va découper nos données en 10 parts égales.
+La machine va ensuite entrainer le modèle sur 9 parts et le tester sur la dernière et elle va répéter l'opération 10 fois en changeant la part de test pour chaque tour. 
+Cela va permettre d'avoir une estimation beaucoup plus fiable du modèle. 
+
 
 ```{r}
 
-# Diviser les données en ensemble d'entraînement et de test (80-20)
+df_lda$Subject <- as.factor(df_lda$Subject)
+
+# On renomme les catégories pour éviter les erreurs 
+levels(df_lda$Subject) <- make.names(levels(df_lda$Subject))
+
 set.seed(123)
-indices <- createDataPartition(df_lda$Subject, p = 0.8, list = FALSE)
-train_data <- df_lda[indices, ]
-test_data <- df_lda[-indices, ]
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  classProbs = TRUE
+)
 
-cat("Taille de l'ensemble d'entraînement :", nrow(train_data), "\n")
-cat("Taille de l'ensemble de test :", nrow(test_data), "\n")
+model_cv <- train(
+  Subject ~ ., 
+  data = df_lda,
+  method = "naive_bayes",
+  trControl = train_control
+)
 
-```
-
-*  **Calcul des centres de gravité :**
-
-```{r}
-
-# Calculer les centres de gravité de chaque classe sur les données d'entraînement
-centers <- aggregate(train_data[, -1], by = list(train_data$Subject), mean)
-rownames(centers) <- centers$Group.1
-centers <- centers[, -1]
-
-cat("\nCentres de gravité calculés pour", nrow(centers), "classes\n")
-
-# Supprimer les catégories avec moins de 10 exemples dans le test
-test_class_counts <- table(test_data$Subject)
-classes_to_keep <- names(test_class_counts[test_class_counts >= 10])
-
-# Filtrer les données de test
-test_data <- test_data %>% filter(Subject %in% classes_to_keep)
-centers <- centers[rownames(centers) %in% classes_to_keep, , drop = FALSE]
-
-cat("Catégories conservées pour l'évaluation :", length(classes_to_keep), "\n")
-cat("Taille de l'ensemble de test après filtrage :", nrow(test_data), "\n")
+print(model_cv)
 
 ```
 
-*  **Classification par distance :**
+#### <FONT color='#0066CC'><FONT size = 3> 3.1 Évaluation des performances </FONT></FONT>
+
+Une fois que le modèle a été entrainé sur les 10 blocs nous allons maintenant regarder la moyenne des résultats. 
+L' accuracy va nous permettre de nous indiquer quel est le pourcentage de thèses qui sont correctement classées parmi toutes les disciplines. 
+Le Kappa est une mesure qui va prendre en compte le hasard. 
 
 ```{r}
 
-# Fonction pour classifier par distance aux centres de gravité
-classify_by_distance <- function(individual, centers) {
-  distances <- apply(centers, 1, function(center) {
-    sqrt(sum((individual - center)^2))
-  })
-  names(distances)[which.min(distances)]
-}
+cv_accuracy <- max(model_cv$results$Accuracy)
+cv_kappa <- model_cv$results$Kappa[which.max(model_cv$results$Accuracy)]
 
-# Faire des prédictions sur l'ensemble de test
-predictions <- apply(test_data[, -1], 1, classify_by_distance, centers = centers)
-predictions <- as.factor(predictions)
-test_reference <- as.factor(test_data$Subject)
+metrics <- data.frame(
+  Mesure = c("Accuracy", "Kappa (CV 10-fold)", "Nombre de classes"),
+  Valeur = c(
+    paste0(round(cv_accuracy * 100, 2), " %"),
+    round(cv_kappa, 3),
+    length(levels(df_lda$Subject))
+  )
+)
 
-# S'assurer qu'ils ont les mêmes niveaux
-common_levels <- intersect(levels(predictions), levels(test_reference))
-predictions <- factor(predictions, levels = common_levels)
-test_reference <- factor(test_reference, levels = common_levels)
-
-# Créer une matrice de confusion
-confusion_matrix <- confusionMatrix(predictions, test_reference)
-
-print(confusion_matrix)
-
-# Extraire les métriques principales
-cat("\nAccuracy :", round(confusion_matrix$overall['Accuracy'] * 100, 2), "%\n")
-cat("Kappa :", round(confusion_matrix$overall['Kappa'], 3), "\n")
+kable(metrics, caption = "Performance du Modèle Bayésien (Validation Croisée)") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 
 ```
 
-<FONT color='#0066CC'><FONT size = 3> 2.5 Analyse des performances et interprétation </FONT></FONT>
+On obtient une précision de presque 50 % cela peut sembler moyen au départ mais il faut se rappeler qu'on a 9 classes possibles.
+Cela signifie que si on réalise un tirage au sort aléatoire on aurait environ 11% de résuitte donc notre modèle est quand même 
+presque 5 fois plus performant que le hasard. 
 
-<DIV align = justify>
 
-Nous analysons maintenant les performances détaillées du modèle et la qualité de la classification par catégorie.
+Pour essayer de comprendre où notre modèle réussit et où il se trompe, nous construisons la matrice de confusion. 
 
 ```{r}
 
-# Créer une table de classification
+cv_predictions <- model_cv$pred
+
+final_preds <- cv_predictions[cv_predictions$Resample != "Resample", ]
+
+cm_cv <- confusionMatrix(final_preds$pred, final_preds$obs)
+
+
+kable(cm_cv$table, caption = "Matrice de Confusion (Validation Croisée)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center") %>%
+  scroll_box(height = "400px")
+
+```
+
+Pour pouvoir mieux comprendre ce que nous obtenons, nous allons calculer le taux de réussite pour chaque matière.
+
+*  **Performance par classe :**
+
+```{r}
+
+# Créer une table de performance par classe
 class_performance <- data.frame(
-  Classe = rownames(confusion_matrix$table),
-  Prédictions_Correctes = diag(confusion_matrix$table),
-  Total = rowSums(confusion_matrix$table)
+  Classe = rownames(cm_cv$table),
+  Prédictions_Correctes = diag(cm_cv$table),
+  Total = rowSums(cm_cv$table)
 )
 class_performance$Taux_Reussite <- round(class_performance$Prédictions_Correctes / class_performance$Total * 100, 2)
+
+# Retirer le préfixe technique (points) pour un affichage plus lisible
+class_performance$Classe <- gsub("\\.", " ", class_performance$Classe)
 
 kable(class_performance, caption = "Taux de réussite par classe") %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center")
 
 ```
+
+On visualise ensuite ces résultats graphiquement afin de mieux comparer chaque disciplines : 
 
 *  **Graphique de précision par catégorie :**
 
@@ -593,10 +612,10 @@ ggplot(accuracy_by_class, aes(x = Class, y = Accuracy, fill = Accuracy)) +
 cat("Nombre total de thèses traitées :", nrow(df_lda), "\n")
 cat("Nombre de catégories :", length(unique(df_lda$Subject)), "\n")
 cat("Nombre de features TF-IDF :", ncol(X), "\n")
-cat("Nombre d'axes discriminants utilisés :", 2, "\n\n")
+cat("Nombre d'axes discriminants utilisés pour le Bayésien :", ncol(df_lda) - 1, "\n\n")
 
-cat("Accuracy globale :", round(confusion_matrix$overall['Accuracy'] * 100, 2), "%\n")
-cat("Kappa :", round(confusion_matrix$overall['Kappa'], 3), "\n\n")
+cat("Accuracy globale :", round(cv_accuracy * 100, 2), "%\n")
+cat("Kappa :", round(cv_kappa, 3), "\n\n")
 
 # Calculer les meilleures et pires catégories
 best_idx <- which.max(class_performance$Taux_Reussite)
@@ -611,6 +630,11 @@ cat("Nombre moyen de thèses par catégorie :", round(mean(class_performance$Tot
 
 ```
 
+Ce que l'on peut conclure de ces résultats, c'est que par exemple les disciplines comme le "Droit et Sciences Politiques" ou encore l'Histoire ont une meilleure précision que les autres disciplines,
+surement car ce sont des disciplines qui utilisent un vocabulaire très spécifiques comme par exemple "lois, siècles, époques etc...".
+
+Les autres disciplines un peu plus scientifique sont un peu plus compliquée à prédire car les mots se ressemblent, c'est à la fois des mathématiques ou de la physique ce qui complique les choses pour le modèle. 
+
 </DIV>
 
 <hr style="border: 1px solid gray">
@@ -619,16 +643,20 @@ cat("Nombre moyen de thèses par catégorie :", round(mean(class_performance$Tot
 
 <DIV align = justify>
 
-<FONT color='#0066CC'><FONT size = 4> 3. Conclusion </FONT></FONT>
+### <FONT color='#0066CC'><FONT size = 4> 4. Conclusion </FONT></FONT>
 
-Ce projet a démontré comment approcher un problème de classification de texte en utilisant une combinaison de techniques de traitement du langage, de réduction de dimensionnalité et de classification bayésienne. 
+Ce projet nous a donc permis d'utiliser différentes méthodes de traitement de textes pour résoudre un problème : classer automatiquement des thèses de doctorat par discipline. 
 
-Les principales étapes ont été :
-1. **Chargement et nettoyage des données** : Suppression des caractères spéciaux, accents et mots vides
-2. **Vectorisation TF-IDF** : Transformation du texte en données numériques pondérées par l'importance
-3. **Analyse Factorielle Discriminante** : Réduction de la dimensionnalité tout en maximisant la séparation entre classes
-4. **Classification Bayésienne Naïve** : Entraînement et validation d'un classifieur probabiliste
+Pour cela nous avons suivi trois grandes étapes. 
 
-Le modèle construit de cette manière permet de classifier automatiquement les thèses françaises dans leurs domaines respectifs, offrant un outil utile pour l'analyse et l'organisation de grands nombres de collections de thèses académiques.
+Tout d'abord nous avons traité les textes en les nettoyant et en utilisant la métjode de TF-IDF afin de transformer les mots en valeur numériques. 
+
+Ensuite nous avons utillisé l'AFD. Cette méthode a permis de réduire le nombre de variables tout en séparant du mieux possible les différentes disciplines. 
+
+Et enfin, nous avons appliqué un classifieur Bayésien naïf en utilisant les axes fournis par l'AFD afin de prédire au mieux chaque thèse. 
+
+Nous avons ensuite réalisée une validation croisée, et on a obtenu une précision d'environ 50%. Ce résultat est satisfaisant contenu de la difficulté du problème (9 disciplines proches les unes des autres). 
+
+Grâce à ce projet on a pu comprendre comment allier les méthodes de réduction de dimension et la classification afin de créer un modèle performant. 
 
 </DIV>

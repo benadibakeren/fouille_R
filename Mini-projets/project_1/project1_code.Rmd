@@ -60,6 +60,8 @@ library(SnowballC) #stemming
 
 ```{r}
 data <- read.csv("Emotion_classify_Data.csv", stringsAsFactors = FALSE)
+data <- data[!is.na(data$Comment) & !is.na(data$Emotion), ]
+data$Comment <- trimws(data$Comment)
 head(data)
 str(data)
 ```
@@ -79,7 +81,7 @@ las = 2)
 ```{r}
 
 names(data)
-data$text_length <- nchar(as.character(data[[1]]))
+data$text_length <- nchar(as.character(data$Comment))
 summary(data$text_length)
 
 hist(data$text_length,
@@ -93,7 +95,7 @@ xlab = "Nombre de caractères")
 ```{r}
 
 # Création du corpus
-corpus <- VCorpus(VectorSource(data[[1]]))
+corpus <- VCorpus(VectorSource(data$Comment))
 
 # Prétraitement
 corpus <- tm_map(corpus, content_transformer(tolower))
@@ -106,7 +108,7 @@ negations <- c("not", "no", "never", "n't")
 stop_words_clean <- setdiff(stop_words, negations)
 
 corpus <- tm_map(corpus, removeWords, stop_words_clean)
-
+corpus <- tm_map(corpus, stemDocument, language = "en")
 
 corpus
 ```
@@ -118,10 +120,12 @@ dtm <- DocumentTermMatrix(
   corpus,
   control = list(
     weighting = weightTfIdf,
-    bounds = list(global = c(5, Inf))
+    bounds = list(global = c(5, Inf)),
+    wordLengths = c(2, Inf)
   )
 )
 
+dtm <- removeSparseTerms(dtm, 0.99)
 
 dtm
 ```
@@ -129,14 +133,13 @@ dtm
 ```{r}
 set.seed(123)
 
-train_index <- sample(seq_len(nrow(dtm)), size = 0.8 * nrow(dtm))
+train_index <- createDataPartition(data$Emotion, p = 0.8, list = FALSE)
 
 dtm_train <- dtm[train_index, ]
 dtm_test  <- dtm[-train_index, ]
 
 label_train <- data$Emotion[train_index]
 label_test  <- data$Emotion[-train_index]
-
 ```
 
 ---
@@ -164,7 +167,8 @@ predictions <- predict(
 ```{r}
 conf_matrix <- confusionMatrix(
   as.factor(predictions),
-  as.factor(label_test)
+  as.factor(label_test),
+  mode = "everything"
 )
 
 conf_matrix
@@ -173,8 +177,8 @@ conf_matrix
 
 ```{r}
 #Indicateurs de performance
-conf_matrix$overall
-conf_matrix$byClass
+conf_matrix$overall[c("Accuracy", "Kappa")]
+conf_matrix$byClass[, c("F1", "Sensitivity", "Specificity", "Balanced Accuracy")]
 ```
 
 
