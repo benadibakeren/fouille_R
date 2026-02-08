@@ -68,7 +68,6 @@ Nous utilisons donc le jeu de données des thèses françaises. Nous allons donc
 
 ```{r}
 
-# Définir un miroir CRAN
 options(repos = c(CRAN = "https://cloud.r-project.org/"))
 
 if(!require("dplyr")) install.packages("dplyr")
@@ -115,7 +114,6 @@ rm(list = ls())
 *  **Seconde étape :**
 
 ```{r}
-# Update this path to match your actual file location
 csv_file <- "french_thesis_20231021_metadata.csv"
 df_temp <- read.csv(csv_file)
 save(df_temp, file = "THESE_DATASET.Rda")
@@ -160,7 +158,7 @@ df_clean <- df_temp %>%
                 Texte = Description) %>% 
   dplyr::select(Subject, Texte)
 
-#On va enlever les lignes vides car il y a quelques descriptions vides
+# On va enlever les lignes vides car il y a certaines descriptions qui sont vides
 
 df_clean <- df_clean %>% 
   filter(!is.na(Texte) & Texte != "" & Texte != " ")
@@ -181,11 +179,10 @@ kable(head(df_clean), caption = "Jeu de données") %>%
 
 ```{r}
 
-# Créer une fonction pour regrouper les thèmes similaires
+# fonction pour regrouper les thèmes similaires
 regroup_subjects <- function(subject) {
   subject <- tolower(subject)
   
-  # Ordre d'importance : être plus spécifique d'abord
   if (grepl("biologie|écologie|environnement|biodiversité|organisme|cellulaire|moléculaire|terre|géologie|océan|espace|atmosphère|climat|toxicologie|médecine|pharmacologie|neurosciences|oncologie|épidémiologie|cancérologie", subject)) {
     return("Biologie et Sciences de la Vie")
   } else if (grepl("chimie|physique|matériaux|minérale|organique|analytique|énergétique", subject)) {
@@ -203,15 +200,13 @@ regroup_subjects <- function(subject) {
   } else if (grepl("anthropologie|sociologie|psychologie|sciences.*humaines|ethnologie|sport|mouvement|éducation|formation|pédagogie|apprentissage|enseignement", subject)) {
     return("Sciences Humaines et Sociales")
   } else {
-    # Si on arrive ici, on essaie de capturer des éléments génériques
     if (grepl("science", subject)) {
       return("Sciences générales")
     }
-    return("Sciences générales")  # Plutôt que "Autres"
+    return("Sciences générales")  
   }
 }
 
-# Appliquer le regroupement
 df_clean$Subject <- sapply(df_clean$Subject, regroup_subjects)
 
 # Afficher la nouvelle distribution
@@ -219,7 +214,7 @@ table_subjects <- table(df_clean$Subject)
 cat("\nDistribution des catégories :\n")
 print(table_subjects)
 
-# Garder seulement les catégories avec au moins 50 documents
+# On garde les catégories avec au moins 50 documents
 df_clean <- df_clean %>%
   filter(Subject %in% names(table_subjects)[table_subjects >= 50])
 
@@ -234,8 +229,6 @@ print(table(df_clean$Subject))
 
 ```{r}
 
-#On va maintenant enregistrer le nouveau dataframe et on nettoie 
-
 save(df_clean, file = "THESE_CLEAN.Rda")
 rm(df_clean, df_temp)
 file.remove("THESE_DATASET.Rda")
@@ -246,7 +239,7 @@ file.remove("THESE_DATASET.Rda")
 
 ```{r}
 
-#On charge le nouveau jeu de données 
+# On charge le nouveau jeu de données 
 rm(list = ls())
 load("THESE_CLEAN.Rda")
 colnames(df_clean)
@@ -257,7 +250,7 @@ colnames(df_clean)
 
 ```{r}
 
-#Présentation des données finales 
+# Présentation des données finales 
 
 kable(head(df_clean), caption = "Jeu de données") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
@@ -293,14 +286,12 @@ corpus <- corpus %>%
   tm_map(stripWhitespace) %>%                         # Supprimer les espaces superflus
   tm_map(removeWords, stopwords_fr)                   # Supprimer les stopwords français
 
-# Créer une matrice document-terme (DTM)
 dtm <- DocumentTermMatrix(corpus)
 
 # Supprimer les termes très rares (qui apparaissent dans moins de 0.1% des documents)
 sparse_threshold <- 0.999
 dtm_reduced <- removeSparseTerms(dtm, sparse_threshold)
 
-# Convertir en matrice dense pour les analyses
 data_matrix <- as.matrix(dtm_reduced)
 
 cat("Dimensions de la matrice document-terme :", nrow(data_matrix), "x", ncol(data_matrix), "\n")
@@ -311,7 +302,7 @@ cat("Dimensions de la matrice document-terme :", nrow(data_matrix), "x", ncol(da
 
 ```{r}
 
-# Créer une matrice TF-IDF
+# Création d'une matrice TF-IDF
 tfidf_matrix <- weightTfIdf(dtm_reduced)
 tfidf_data <- as.matrix(tfidf_matrix)
 
@@ -324,7 +315,6 @@ cat("Nombre de termes uniques :", ncol(tfidf_data), "\n")
 
 ```{r}
 
-# Calculer la variance de chaque terme et sélectionner les tops 
 variances <- apply(tfidf_data, 2, var)
 top_indices <- order(variances, decreasing = TRUE)[1:min(200, length(variances))]
 tfidf_data_reduced <- tfidf_data[, top_indices]
@@ -337,16 +327,15 @@ cat("Dimensions après réduction :", nrow(tfidf_data_reduced), "x", ncol(tfidf_
 
 ```{r}
 
-# Créer un dataframe avec les données TF-IDF réduites et la variable cible
 df_features <- data.frame(
   Subject = df_clean$Subject,
   as.data.frame(tfidf_data_reduced)
 )
 
-# Afficher les dimensions
+# Affiche les dimensions
 cat("Dimensions du dataset avec features TF-IDF :", nrow(df_features), "x", ncol(df_features), "\n")
 
-# Afficher la distribution des classes
+# Affiche la distribution des classes
 table_dist <- table(df_features$Subject)
 cat("\nDistribution des classes :\n")
 print(table_dist)
@@ -361,14 +350,13 @@ L'Analyse Factorielle Discriminante est une technique de réduction de dimension
 
 ```{r}
 
-# Sélectionner uniquement les variables numériques (termes TF-IDF)
+# Sélection des variables numériques (termes TF-IDF)
 X <- df_features[, -1]
 y <- df_features$Subject
 
 # Appliquer l'AFD
 lda_model <- MASS::lda(X, grouping = y)
 
-# Afficher les informations du modèle
 cat("Nombre d'axes discriminants :", length(lda_model$svd), "\n")
 cat("Proportions de la variance expliquée :\n")
 print(lda_model$svd^2 / sum(lda_model$svd^2))
@@ -376,7 +364,7 @@ print(lda_model$svd^2 / sum(lda_model$svd^2))
 # Obtenir les scores des axes discriminants
 lda_scores <- predict(lda_model, X)$x
 
-# Créer un dataframe avec les scores et la classe
+# Création d'un dataframe avec les scores et la classe
 df_lda <- data.frame(
   Subject = y,
   lda_scores
@@ -384,7 +372,7 @@ df_lda <- data.frame(
 
 cat("Dimensions des données après AFD :", nrow(df_lda), "x", ncol(df_lda), "\n")
 
-# Créer un tableau récapitulatif des résultats de l'AFD avec tests de Wilks
+# Création d'un tableau récapitulatif des résultats de l'AFD avec tests de Wilks
 n_axes <- min(2, length(lda_model$svd))  # Prendre max 2 axes pour le tableau
 result_afd <- matrix(0, nrow = n_axes, ncol = 6)
 
@@ -429,10 +417,10 @@ plot_data_gg <- data.frame(
   Class = y
 )
 
-# Calculer les centres de gravité de chaque classe
+# Calcul des centres de gravité de chaque classe
 centers <- aggregate(cbind(LD1, LD2) ~ Class, data = plot_data_gg, mean)
 
-# Créer le graphique avec ggplot2
+# Création du graphique avec ggplot2
 ggplot(plot_data_gg, aes(x = LD1, y = LD2, colour = Class)) +
   geom_point(size = 2, alpha = 0.6) +
   geom_point(data = centers, aes(x = LD1, y = LD2, colour = Class), 
@@ -552,7 +540,7 @@ Pour pouvoir mieux comprendre ce que nous obtenons, nous allons calculer le taux
 
 ```{r}
 
-# Créer une table de performance par classe
+# Table de performance par classe
 class_performance <- data.frame(
   Classe = rownames(cm_cv$table),
   Prédictions_Correctes = diag(cm_cv$table),
@@ -560,7 +548,7 @@ class_performance <- data.frame(
 )
 class_performance$Taux_Reussite <- round(class_performance$Prédictions_Correctes / class_performance$Total * 100, 2)
 
-# Retirer le préfixe technique (points) pour un affichage plus lisible
+# On retire les points pour un affichage plus lisible
 class_performance$Classe <- gsub("\\.", " ", class_performance$Classe)
 
 kable(class_performance, caption = "Taux de réussite par classe") %>%
@@ -574,7 +562,6 @@ On visualise ensuite ces résultats graphiquement afin de mieux comparer chaque 
 
 ```{r fig.width=12, fig.height=6}
 
-# Créer un graphique de précision par catégorie
 accuracy_by_class <- data.frame(
   Class = class_performance$Classe,
   Accuracy = class_performance$Taux_Reussite
@@ -585,7 +572,7 @@ accuracy_by_class <- accuracy_by_class[order(accuracy_by_class$Accuracy), ]
 accuracy_by_class$Class <- factor(accuracy_by_class$Class, 
                                    levels = accuracy_by_class$Class)
 
-# Créer le graphique
+# Création du graphique
 ggplot(accuracy_by_class, aes(x = Class, y = Accuracy, fill = Accuracy)) +
   geom_bar(stat = "identity", color = "black", size = 0.5) +
   scale_fill_gradient(low = "red", high = "green", limits = c(0, 100)) +
