@@ -1,0 +1,288 @@
+---
+title: "<FONT color='#0066CC'><FONT size = 4 ><DIV align= center> AP-4209 ESIEE-Paris: 2025 - 2026 </DIV></FONT></FONT>"
+output:
+  html_document:
+    highlight: textmate
+    theme: readable
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+---
+
+<style type="text/css">
+body, td {font-size: 15px;}
+code.r{font-size: 12px;}
+pre { font-size: 12px;}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+<FONT color='#0066CC'><FONT size = 4 >
+
+::: {align="center"} 
+Fouille de données\
+
+PROJET FINAL : CLASSIFICATION BAYÉSIENNE ET ANALYSE FACTORIELLE DISCRIMINANTE 
+:::
+
+</FONT></FONT>
+
+<FONT color='#0066CC'><FONT size = 4 >
+
+::: {align="center"} 
+Auteur : Meliana ZERROUG, Keren BENADIBA-- ESIEE Paris 
+:::
+
+</FONT></FONT>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 1. Préambule </FONT></FONT>
+
+De nos jours, nous avons de plus en plus d'outils comme ChatGPT ou encore Gemini, et c'est de plus en plus compliqué de savoir si un texte a été écrit par un être humain ou bien par une 
+machine. C'est dans ce contexte que nous allons réaliser notre projet final qui consiste à essayer de déterminer lorsqu'un texte a été généré par une IA. 
+
+Pour réaliser ce travail nous allons nous baser sur le jeu de données contenu dans le dossier "llm-detect-ai-generated-text", si besoin nous utiliserons des données supplémentaires contenu dans les dossiers "train_drcat".
+
+L'objectif de notre projet est donc de développer un système de classification de texte en combinant deux méthodes que nous avons étudiées ; tout d'abord nous allons utiliser l'analyse factorielle discriminante qui va nous permettre de faire le tri dans les données et les caractéristiques afin de mieux séparer nos deux groupes (humain et IA).
+Ensuite, nous utiliserons la classification Bayésienne qui en utilisant les résultats de l'AFD va calculer les probabilités qu'un texte soit généré par un humain ou une IA. 
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 2. Données et prétraitement </FONT></FONT>
+
+Nous allons donc utiliser le jeu de données qui provient de Kaggle LLM - Detect AI Generated Text. Nous allons principalement travailler avec le fichier train_essays.csv.
+Nous avons également le fichier train_prompts.csv qui va nous fournir le contexte des textes. 
+
+*  **Installation des packages nécessaires :**  
+
+```{r}
+
+if(!require("dplyr")) install.packages("dplyr")
+if(!require("kableExtra")) install.packages("kableExtra")
+if(!require("tm")) install.packages("tm")
+if(!require("MASS")) install.packages("MASS") 
+if(!require("e1071")) install.packages("e1071") 
+if(!require("topicmodels")) install.packages("topicmodels") 
+if(!require("caret")) install.packages("caret") 
+if(!require("stopwords")) install.packages("stopwords")
+if(!require("naivebayes")) install.packages("naivebayes")
+if(!require("ggplot2")) install.packages("ggplot2") 
+
+```
+
+*  **Chargement des packages nécessaires :**
+
+```{r}
+
+library(dplyr)
+library(kableExtra)
+library(tm)
+library(MASS)
+library(e1071)
+library(topicmodels)
+library(caret)
+library(stopwords)
+library(naivebayes)
+library(stopwords)
+library(ggplot2)
+
+```
+
+*  **Première étape :**
+
+```{r}
+file.remove("TEXT_DATASET.Rda")
+file.remove("TEXT_CLEAN.Rda")
+
+rm(list = ls())
+
+```
+
+*  **Seconde étape :**
+
+```{r}
+
+data_dir <- "llm-detect-ai-generated-text"
+
+train_path <- file.path(data_dir, "train_essays.csv")
+prompts_path <- file.path(data_dir, "train_prompts.csv")
+
+train_df <- read.csv(train_path)
+prompts_df <- read.csv(prompts_path)
+
+save(train_df, prompts_df, file = "TEXT_DATASET.Rda")
+
+```
+
+*  **Troisième étape :**
+
+Nous allons maintenant recharger le fichier créée à l'étape précédente afin de vérifier que les données soient correctement sauvegardées ensuite nous afficherons les dimensions de notre jeu de données. 
+
+```{r}
+
+rm(train_df, prompts_df)
+rm(list = ls())
+load("TEXT_DATASET.Rda")
+colnames(train_df)
+kable(head(train_df), caption = "Jeu de données") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
+
+```
+
+*  **Vérification des données manquantes et de l'équilibre entre les classes :**
+
+Avant de nettoyer nous allons regarder s'il y a beacoup de données manquantes et nous allons également regarder comment sont réparties nos deux classes (humain et IA). 
+
+```{r}
+
+nb_vide <- sum(train_df$text == "")
+nb_na <- sum(is.na(train_df$text))
+
+total_lignes <- nrow(train_df)
+total_inutiles <- nb_vide + nb_na
+
+cat("Nombre total de lignes :", total_lignes, "\n")
+cat("Total à supprimer :", total_inutiles, "\n")
+
+kable(table(train_df$generated), caption = "Distribution des classes (0=Humain, 1=IA)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
+```
+
+On remarque qu'il n'y a pas de lignes vides à supprimer, cependant on remarque que c'est très déséquilibré on possède 1375 textes écrit par des humain et 3 par des IA. 
+
+*  **Chargement et augmentation des données :**
+
+Comme le jeu de données original est très déséquilibré, nous allons ajouter des données externes (drcat), cela va nous permettre d'avoir assez d'exemples de textes générés par une IA afin de pouvoir entraîner nos modèles. 
+
+```{r}
+
+drcat_paths <- c(
+  "train_drcat_01.csv/train_drcat_01.csv",
+  "train_drcat_02.csv/train_drcat_02.csv",
+  "train_drcat_03.csv/train_drcat_03.csv",
+  "train_drcat_04.csv/train_drcat_04.csv"
+)
+
+drcat_list <- lapply(drcat_paths, read.csv)
+drcat_df <- bind_rows(drcat_list) #permet de prendre la liste entière au liue de coller ls tableaux un par un et créer un seul grand dataframe 
+
+#essayer de rendre la fusion plus simple en harmonisant noms des colonnes (car pas les memes noms de colonnes)
+kaggle_df <- train_df %>%
+  transmute(
+    text = text,
+    label = generated,
+    source = "kaggle",
+    prompt = as.character(prompt_id)
+  )
+
+drcat_df <- drcat_df %>%
+  transmute(
+    text = text,
+    label = label,
+    source = paste0("drcat_", source),
+    prompt = as.character(prompt)
+  )
+
+
+full_data <- bind_rows(kaggle_df, drcat_df)
+save(full_data, file = "TEXT_DATASET_AUG.Rda")
+
+kable(table(full_data$label), caption = "Distribution des classes (0=Humain, 1=IA)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
+
+```
+
+*  **Quatrième étape :**
+
+Nous possèdons maintenant une très grande quantité de données, afin d'optimiser notre temps de calcul nous allons utiliser un échantillon de notre jeu de données.
+
+Nous allons prendre 20 000 textes humains et 20 000 textes fait par une IA (50/50).
+
+```{r}
+
+set.seed(123) 
+
+# Humain
+df_humain <- full_data %>% 
+  filter(label == 0) %>% 
+  sample_n(20000)
+
+# IA 
+df_ia <- full_data %>% 
+  filter(label == 1) %>% 
+  sample_n(20000)
+
+# On fusionne les deux échantillons 
+df <- bind_rows(df_humain, df_ia)
+
+df <- df %>%
+  dplyr::rename(generated = label) %>%  
+  dplyr::select(generated, text) %>%
+  mutate(generated = factor(generated, levels = c(0, 1), labels = c("Humain", "IA")))
+
+kable(table(df$generated), caption = "Distribution") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")%>%  
+  scroll_box( height = "200px")
+
+```
+
+*  **Cinquième étape :**
+
+Nous allons maintenant sauvegarder cet échantillon du jeu de données dans le fichier TEXT_CLEAN.Rda.
+
+```{r,   warning = F}
+# On enregistre le nouveau dataframe transformé et on nettoie
+save(df, file = "TEXT_CLEAN.Rda")
+rm(df, full_data, df_humain, df_ia, drcat_list)
+file.remove("TEXT_DATASET.Rda") # on supprime l'ancien fichier
+file.remove("TEXT_DATASET_AUG.Rda")
+```
+
+*  **Sixième étape :**
+
+On va maintenant recharger le fichier propre pour être sûr que les données sont prêtes pour la partie 3.
+
+```{r,echo = T,  warning = F}
+# On charge le nouveau jeu de données 
+rm(list = ls()) # supression de tous les objets en mémoire
+load("TEXT_CLEAN.Rda")
+
+colnames(df)
+
+```
+
+*  **Septième étape :**
+
+On va maintenant visualiser les données. 
+
+```{r,   warning = F}
+
+kable(head(df,100), caption = "Extrait du jeu de données") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center") %>%
+  scroll_box(height = "400px", width = "100%")
+
+```
+
+</DIV>
+
+<hr style="border: 1px  solid gray">
+</hr>
+
+<DIV align = justify>
+
+### <FONT color='#0066CC'><FONT size = 4> 3. Extraction de caractéristiques </FONT></FONT>
