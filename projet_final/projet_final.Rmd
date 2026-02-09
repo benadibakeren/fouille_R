@@ -42,9 +42,9 @@ Auteur : Meliana ZERROUG, Keren BENADIBA-- ESIEE Paris
 
 <DIV align = justify>
 
-### <FONT color='#0066CC'><FONT size = 4> 1. Préambule </FONT></FONT>
+### <FONT color='#0066CC'><FONT size = 4> 1. Introduction </FONT></FONT>
 
-De nos jours, nous avons de plus en plus d'outils comme ChatGPT ou encore Gemini, et c'est de plus en plus compliqué de savoir si un texte a été écrit par un être humain ou bien par une 
+De nos jours, nous avons de plus en plus d'outils comme ChatGPT ou encore Gemini, et donc c'est de plus en plus compliqué de savoir si un texte a été écrit par un être humain ou bien par une 
 machine. C'est dans ce contexte que nous allons réaliser notre projet final qui consiste à essayer de déterminer lorsqu'un texte a été généré par une IA. 
 
 Pour réaliser ce travail nous allons nous baser sur le jeu de données contenu dans le dossier "llm-detect-ai-generated-text", si besoin nous utiliserons des données supplémentaires contenu dans les dossiers "train_drcat".
@@ -144,7 +144,7 @@ kable(head(train_df), caption = "Jeu de données") %>%
 
 *  **Vérification des données manquantes et de l'équilibre entre les classes :**
 
-Avant de nettoyer nous allons regarder s'il y a beacoup de données manquantes et nous allons également regarder comment sont réparties nos deux classes (humain et IA). 
+Avant de nettoyer, nous allons regarder s'il y a beacoup de données manquantes et nous allons également regarder comment sont réparties nos deux classes (humain et IA). 
 
 ```{r}
 
@@ -220,12 +220,12 @@ set.seed(123)
 # Humain
 df_humain <- full_data %>% 
   filter(label == 0) %>% 
-  sample_n(20000)
+  sample_n(2000)
 
 # IA 
 df_ia <- full_data %>% 
   filter(label == 1) %>% 
-  sample_n(20000)
+  sample_n(2000)
 
 # On fusionne les deux échantillons 
 df <- bind_rows(df_humain, df_ia)
@@ -286,3 +286,424 @@ kable(head(df,100), caption = "Extrait du jeu de données") %>%
 <DIV align = justify>
 
 ### <FONT color='#0066CC'><FONT size = 4> 3. Extraction de caractéristiques </FONT></FONT>
+
+Nous allons maintenant transformer les textes en données numériques exploitables pour nos modèles. Pour cela, nous utiliserons la vectorisation TF-IDF (Term Frequency-Inverse Document Frequency) après un nettoyage adéquat du texte.
+
+*  **Nettoyage du texte :**
+
+```{r}
+
+# On charge les stopwords en anglais
+suppressWarnings({
+  stopwords_en <- stopwords::stopwords("en")
+})
+
+# On crée un corpus à partir des textes
+corpus <- Corpus(VectorSource(df$text))
+
+# On nettoie le texte
+corpus <- corpus %>%
+  tm_map(content_transformer(tolower)) %>%           # Convertie en minuscules
+  tm_map(removePunctuation) %>%                       # Supprime la ponctuation
+  tm_map(removeNumbers) %>%                           # Supprime les chiffres
+  tm_map(stripWhitespace) %>%                         # Supprime les espaces superflus
+  tm_map(removeWords, stopwords_en)                   # Supprime les stopwords anglais
+
+dtm <- DocumentTermMatrix(corpus)
+
+# On supprime les termes très rares
+sparse_threshold <- 0.999
+dtm_reduced <- removeSparseTerms(dtm, sparse_threshold)
+
+data_matrix <- as.matrix(dtm_reduced)
+
+cat("Dimensions de la matrice document-terme :", nrow(data_matrix), "x", ncol(data_matrix), "\n")
+
+```
+
+*  **Vectorisation TF-IDF :**
+
+```{r}
+
+# On crée une matrice TF-IDF
+tfidf_matrix <- weightTfIdf(dtm_reduced)
+tfidf_data <- as.matrix(tfidf_matrix)
+
+cat("Dimensions de la matrice TF-IDF :", nrow(tfidf_data), "x", ncol(tfidf_data), "\n")
+cat("Nombre de termes uniques :", ncol(tfidf_data), "\n")
+
+```
+
+*  **Sélection des termes les plus importants :**
+
+```{r}
+
+variances <- apply(tfidf_data, 2, var)
+top_indices <- order(variances, decreasing = TRUE)[1:min(30, length(variances))]
+tfidf_data_reduced <- tfidf_data[, top_indices]
+
+cat("Dimensions après réduction :", nrow(tfidf_data_reduced), "x", ncol(tfidf_data_reduced), "\n")
+
+```
+
+*  **Combinaison avec la variable cible :**
+
+```{r}
+
+df_features <- data.frame(
+  generated = df$generated,
+  as.data.frame(tfidf_data_reduced)
+)
+
+cat("Dimensions du dataset avec features TF-IDF :", nrow(df_features), "x", ncol(df_features), "\n")
+
+table_dist <- table(df_features$generated)
+cat("\nDistribution des classes :\n")
+print(table_dist)
+
+```
+
+</DIV>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+### <FONT color='#0066CC'><FONT size = 4> 4. Analyse Factorielle Discriminante (AFD) </FONT></FONT>
+
+<DIV align = justify>
+
+L'Analyse Factorielle Discriminante (AFD) est une méthode qui va nous permettre de réduire le nombre de variables tout en gardant les informations importantes pour distinguer nos deux groupes (IA et Humain). 
+Pour faire simple, on va chercher les meilleures combinaisons des variables originales pour pouvoir séparer au mieux les textes humains des textes générés par l'IA.
+
+Comme notre problème est binaire (Humain ou IA), l'AFD est très adaptée. Elle va nous permettre d'identifier les caractéristiques du texte qui différencient vraiment les deux groupes.
+
+```{r}
+
+# On sélectionne les variables numériques 
+X <- df_features[, -1]
+y <- df_features$generated
+
+# On applique l'AFD
+lda_model <- MASS::lda(X, grouping = y)
+
+cat("Nombre d'axes discriminants :", length(lda_model$svd), "\n")
+cat("Proportion de la variance expliquée :\n")
+print(lda_model$svd^2 / sum(lda_model$svd^2))
+
+lda_scores <- predict(lda_model, X)$x
+
+# On crée un dataframe avec les scores et la classe
+df_lda <- data.frame(
+  generated = y,
+  lda_scores
+)
+
+cat("Dimensions des données après AFD :", nrow(df_lda), "x", ncol(df_lda), "\n")
+
+```
+
+*  **Tableau récapitulatif des résultats de l'AFD :**
+
+```{r}
+
+n_axes <- length(lda_model$svd)  
+result_afd <- matrix(0, nrow = n_axes, ncol = 6)
+
+# Valeurs propres
+result_afd[, 1] <- lda_model$svd^2
+
+# Pourcentage d'inertie
+result_afd[, 2] <- (lda_model$svd^2 / sum(lda_model$svd^2)) * 100
+
+# Corrélations canoniques
+result_afd[, 3] <- sqrt(lda_model$svd^2 / (1 + lda_model$svd^2))
+
+# Wilks Lambda 
+result_afd[, 4] <- cumprod(1 - result_afd[, 3]^2)
+
+# Khi-deux
+N <- nrow(X)
+P <- ncol(X)
+K <- length(unique(y))
+result_afd[, 5] <- -(N - (P + K)/2 - 1) * log(result_afd[, 4])
+
+# p-value
+result_afd[, 6] <- 1 - pchisq(result_afd[, 5], P * (K - 1))
+
+result_afd_df <- data.frame(result_afd)
+colnames(result_afd_df) <- c("Valeur propre", "% Inertie", "Corrélation", "Wilks Lambda", "Khi-deux", "p-value")
+rownames(result_afd_df) <- paste0("Axe ", 1:n_axes)
+
+kable(result_afd_df, caption = "Tests de Wilks") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")
+```
+
+*  **Visualisation de la projection AFD :**
+
+```{r fig.width=14, fig.height=8}
+
+# On utilise le premier axe car on est dans un problème binaire
+plot_data_gg <- data.frame(
+  LD1 = lda_scores[, 1],
+  Class = y
+)
+
+# On calcule les centres de gravité de chaque classe
+centers <- aggregate(LD1 ~ Class, data = plot_data_gg, mean)
+
+ggplot(plot_data_gg, aes(x = LD1, fill = Class)) +
+  geom_density(alpha = 0.6, color = "black") +
+  geom_vline(data = centers, aes(xintercept = LD1, color = Class), 
+             size = 1, linetype = "dashed") +
+  theme_minimal() +
+  ggtitle("Projection AFD : Séparation Humain vs IA") +
+  xlab("Axe discriminant 1") +
+  ylab("Densité") +
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 11),
+    plot.title = element_text(size = 13, hjust = 0.5),
+    axis.title = element_text(size = 11)
+  )
+
+```
+
+</DIV>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+### <FONT color='#0066CC'><FONT size = 4> 5. Classification Bayésienne Naïve </FONT></FONT>
+
+<DIV align = justify>
+
+Nous allons maintenant appliquer un classifieur Bayésien Naïf sur les axes factoriels que nous a fournis l'AFD. 
+Cette approche est particulièrement efficace car nous allons combiner AFD et Bayésien naïf. 
+Cette combinaison va nous permettre de réduire la dimensionnalité tout en préservant les informations discriminantes (AFD).
+De plus, les axes de l'AFD sont orthogonaux, ainsi on respecte l'hypothèse d'indépendance du Bayésien naïf.
+Enfin, étant donné que nous nous situons dans un problème binaire, cette combinaison est très facilement interprétable.
+
+Maintenant nous allons utiliser la **validation croisée en 10 blocs** pour évaluer notre modèle.
+
+```{r}
+
+df_lda$generated <- as.factor(df_lda$generated)
+
+# D'abord on renomme les catégories pour éviter des erreurs 
+levels(df_lda$generated) <- make.names(levels(df_lda$generated))
+
+set.seed(123)
+train_control <- trainControl(
+  method = "cv",
+  number = 5,
+  savePredictions = "final",
+  classProbs = TRUE
+)
+
+model_cv <- train(
+  generated ~ ., 
+  data = df_lda,
+  method = "naive_bayes",
+  trControl = train_control
+)
+
+print(model_cv)
+
+```
+
+#### <FONT color='#0066CC'><FONT size = 3> 5.1 Évaluation des performances </FONT></FONT>
+
+Une fois que le modèle a bien été entraîné sur les 5 blocs, nous pouvons examiner les résultats moyens
+en particulier l'**Accuracy** qui nous indique le pourcentage de textes correctement classifiés et 
+le **Kappa** qui va prendre en compte le hasard pour rendre l'évaluation plus fiable.
+
+```{r}
+
+cv_accuracy <- max(model_cv$results$Accuracy)
+cv_kappa <- model_cv$results$Kappa[which.max(model_cv$results$Accuracy)]
+
+metrics <- data.frame(
+  Mesure = c("Accuracy", "Kappa (CV 5-fold)", "Sensibilité (Rappel)"),
+  Valeur = c(
+    paste0(round(cv_accuracy * 100, 2), " %"),
+    round(cv_kappa, 3),
+    "Voir matrice de confusion"
+  )
+)
+
+kable(metrics, caption = "Performance du Modèle Bayésien (Validation Croisée)") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
+
+```
+
+*  **Matrice de Confusion :**
+
+```{r}
+
+cv_predictions <- model_cv$pred
+
+# Filtrer les prédictions finales
+if (nrow(cv_predictions) > 0) {
+  final_preds <- cv_predictions[cv_predictions$Resample != "Resample", ]
+  
+  # Vérifier qu'on a des prédictions
+  if (nrow(final_preds) > 0) {
+    cm_cv <- confusionMatrix(final_preds$pred, final_preds$obs)
+    
+    kable(cm_cv$table, caption = "Matrice de Confusion (Validation Croisée)") %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")
+  } else {
+    cat("Aucune prédiction à afficher\n")
+  }
+} else {
+  cat("Aucune prédiction disponible\n")
+}
+
+```
+
+*  **Métriques détaillées par classe :**
+
+```{r}
+
+if (!is.null(cm_cv$byClass)) {
+  class_metrics <- cm_cv$byClass
+  detailed_metrics <- data.frame(
+    Métrique = names(class_metrics),
+    Valeur = round(class_metrics, 4)
+  )
+  
+  kable(detailed_metrics, caption = "Métriques détaillées de performance") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center")
+} else {
+  cat("Métriques détaillées non disponibles pour ce modèle\n")
+}
+
+```
+
+*  **Performance par classe :**
+
+```{r}
+
+if (exists("cm_cv") && !is.null(cm_cv)) {
+  # Table de performance par classe
+  class_performance <- data.frame(
+    Classe = rownames(cm_cv$table),
+    Prédictions_Correctes = diag(cm_cv$table),
+    Total = rowSums(cm_cv$table)
+  )
+  class_performance$Taux_Reussite <- round(class_performance$Prédictions_Correctes / class_performance$Total * 100, 2)
+  
+  kable(class_performance, caption = "Taux de réussite par classe") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center")
+} else {
+  cat("Performance par classe non disponible\n")
+}
+
+```
+
+*  **Visualisation des résultats :**
+
+```{r fig.width=12, fig.height=6}
+
+if (exists("cm_cv") && !is.null(cm_cv)) {
+  # On prépare les données pour la visualisation
+  cm_data <- as.data.frame(cm_cv$table)
+  colnames(cm_data) <- c("Observé", "Prédit", "Fréquence")
+  
+  # Graphique de la matrice de confusion
+  ggplot(cm_data, aes(x = Prédit, y = Observé, fill = Fréquence)) +
+    geom_tile(color = "black", size = 0.5) +
+    geom_text(aes(label = Fréquence), vjust = 0.5, hjust = 0.5, size = 4, fontface = "bold") +
+    scale_fill_gradient(low = "white", high = "steelblue") +
+    theme_minimal() +
+    theme(
+      axis.title = element_text(size = 12, face = "bold"),
+      plot.title = element_text(size = 13, hjust = 0.5, face = "bold"),
+      axis.text = element_text(size = 11)
+    ) +
+    ggtitle("Matrice de Confusion - Prédictions du modèle Bayésien") +
+    xlab("Classe Prédite") +
+    ylab("Classe Observée")
+} else {
+  cat("Matrice de confusion non disponible\n")
+}
+
+```
+
+*  **Résumé des résultats :**
+
+```{r}
+
+cat("Nombre total de textes traités :", nrow(df_lda), "\n")
+cat("Nombre de classes (binaire) : 2 (Humain vs IA)\n")
+cat("Nombre de features TF-IDF initiales :", ncol(X), "\n")
+cat("Nombre de features après sélection :", ncol(tfidf_data_reduced), "\n")
+cat("Nombre d'axes discriminants :", ncol(df_lda) - 1, "\n\n")
+
+```
+
+*  **Performance globale :**
+
+```{r}
+
+cat("Accuracy globale :", round(cv_accuracy * 100, 2), "%\n")
+cat("Kappa :", round(cv_kappa, 3), "\n\n")
+
+if (exists("class_performance") && nrow(class_performance) > 0) {
+  cat("--- PERFORMANCE PAR CLASSE ---\n")
+  cat("Humain : ", class_performance$Taux_Reussite[1], "%\n")
+  cat("IA : ", class_performance$Taux_Reussite[2], "%\n\n")
+}
+
+if (exists("cm_cv") && !is.null(cm_cv)) {
+  cat("Vrais Positifs (IA correctement détectées) :", cm_cv$table[2,2], "\n")
+  cat("Faux Positifs (Humain classifiés comme IA) :", cm_cv$table[1,2], "\n")
+  cat("Vrais Négatifs (Humain correctement détectés) :", cm_cv$table[1,1], "\n")
+  cat("Faux Négatifs (IA classifiées comme Humain) :", cm_cv$table[2,1], "\n")
+}
+
+```
+
+</DIV>
+
+<hr style="border: 1px solid gray">
+
+</hr>
+
+### <FONT color='#0066CC'><FONT size = 4> 6. Conclusion </FONT></FONT>
+
+<DIV align = justify>
+
+Ce projet nous a permis de développer un modèle permettant de distinguer les textes générés par une IA de ceux écrit par des humains.
+
+Tout d'abord, nous avons effectué un prétraitement des données, en nettoyant les textes et en augmentant notre jeu de données pour atteindre un équilibre entre les classes.
+Ensuite, nous avons extrait des caractéristiques à partir des textes en utilisant la vectorisation TF-IDF, ce qui nous a permis de transformer les textes en données numériques 
+exploitables pour nos modèles. Nous avons ensuite appliqué l'Analyse Factorielle Discriminante (AFD) pour réduire la dimensionnalité tout en préservant les informations 
+importantes, ce qui nous a permis d'identifier les axes qui séparent au mieux les textes humains des textes générés par l'IA.  
+Enfin, nous avons utilisé un classifieur Bayésien Naïf sur les axes de l'AFD, avec validation croisée en 5 blocs pour évaluer la performance du modèle.
+
+**Résultats obtenus :**
+
+Notre modèle a atteint les performances suivantes :
+- **Textes humains** : 77.32% correctement identifiés
+- **Textes générés par IA** : 79.16% correctement identifiés
+- Une performance équilibrée entre les deux classes, ce qui est positif
+
+Cela signifie que notre système détecte légèrement mieux les textes IA que les textes humains, avec une petite différence.
+
+**Conclusions finales :**
+
+Combiner AFD et Bayésien naïf est une approche efficace pour détecter les textes humains des textes IA. 
+Nous avons obtenu de bons résultats avec une performance d'environ 77-79 %, ce qui signifie que notre modèle est capable de 
+détecter correctement la majorité des textes, même s'il existe encore une part d'erreur (environ 20-23%).
+
+On peut donc en conclure qu'il est possible de différencier les textes générés par une IA de ceux écrits par des humains avec une bonne précision, 
+mais il reste encore une marge d'amélioration pour atteindre une performance parfaite.
+</DIV>
+
+<hr style="border: 1px solid gray">
+
+</hr>
