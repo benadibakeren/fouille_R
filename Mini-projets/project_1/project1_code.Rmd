@@ -59,6 +59,7 @@ if(!require("kableExtra")) install.packages("kableExtra")
 if(!require("tm")) install.packages("tm")
 if(!require("MASS")) install.packages("MASS") 
 if(!require("e1071")) install.packages("e1071")
+if(!require("SnowballC")) install.packages("SnowballC")
 
 ```
 
@@ -80,7 +81,9 @@ library(SnowballC) #stemming
 data <- read.csv("Emotion_classify_Data.csv", stringsAsFactors = FALSE)
 data <- data[!is.na(data$Comment) & !is.na(data$Emotion), ]
 data$Comment <- trimws(data$Comment)
-head(data)
+kable(head(data,100), caption = "Extrait du jeu de données") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F, position = "center") %>%
+  scroll_box(height = "300px", width = "100%")
 str(data)
 ```
 
@@ -101,7 +104,6 @@ las = 2)
 names(data)
 data$text_length <- nchar(as.character(data$Comment))
 summary(data$text_length)
-
 hist(data$text_length,
 breaks = 30,
 col = "lightblue",
@@ -212,6 +214,32 @@ conf_matrix$overall[c("Accuracy", "Kappa")]
 conf_matrix$byClass[, c("F1", "Sensitivity", "Specificity", "Balanced Accuracy")]
 ```
 
+# Validation croisée 
+
+Afin de vérifier plus concrètement l'efficacité de notre modèle nous allons appliquer une validation croisée 
+
+```{r}
+
+dtm_kfold_mat <- as.matrix(removeSparseTerms(dtm, 0.995))
+labels_kfold <- as.factor(data$Emotion)
+
+train_control <- trainControl(method = "cv", number = 10)
+
+set.seed(123)
+model_kfold <- train(
+  x = dtm_kfold_mat, 
+  y = labels_kfold,
+  method = "naive_bayes",
+  trControl = train_control,
+  tuneGrid = expand.grid(laplace = 1, usekernel = FALSE, adjust = 1)
+)
+
+print(model_kfold)
+
+```
+
+
+
 
 # III- Résultats
 
@@ -219,28 +247,24 @@ conf_matrix$byClass[, c("F1", "Sensitivity", "Specificity", "Balanced Accuracy")
 
 La matrice de confusion nous permet d'analyser les performances du classificateur bayésien naïf.
 
-L’émotion **anger** est relativement bien reconnue par le modèle, avec une sensibilité d’environ 0,63, 
-indiquant qu’une proportion importante des textes exprimant la colère est correctement classée. 
-Cependant, la spécificité associée à cette classe reste faible, ce qui révèle des confusions 
-persistantes avec les autres émotions. La balanced accuracy pour cette classe est d’environ 0,52, 
-traduisant des performances globalement moyennes.
+L’émotion **anger** obtient une sensibilité de 0.33, cela signifie qu'environ seulement un tiers des messages de colère est correctement identifié.
+Cependant la spécificité est de 0.84 ce qui indique que le modèle est trop prudent et fait très peu de faux positifs.
+La balanced accuracy est de 0.58 cela montre une performance plutôt moyenne.  
 
-L’émotion **fear** présente des performances plus contrastées. Sa sensibilité est plus faible (environ 0,37), 
-cela indique que de nombreux textes exprimant la peur ne sont pas correctement identifiés. En revanche, 
-sa spécificité est plus élevée, ce qui signifie que le modèle commet moins de faux positifs pour cette classe. 
-La balanced accuracy obtenue est également proche de 0,52, montrant une capacité de discrimination limitée 
-mais stable.
+L’émotion **fear** est beaucoup plus compliqué à détecter pour notre modèle, on a une sensibilité très faible de 0.15.
+La grande majorité des expressions de peurs sont classées dans la joie. Cependant, elle possède la spécificité la plus élevée 0.96 cela signifie que lorsque le modèle prédit "fear" il a de fortes chances d'avoir raison. 
 
-L’émotion **joy** reste la plus difficile à détecter pour le modèle. Bien que sa spécificité soit élevée, la 
-sensibilité demeure faible (environ 0,08), ce qui indique que peu de textes exprimant la joie sont correctement 
-classés. Néanmoins, par rapport aux versions précédentes du modèle, on observe une légère amélioration de la 
-détection de cette classe. La balanced accuracy associée à **joy** est proche de 0,51, ce qui correspond à des 
-performances proches de celles d’un classificateur aléatoire.
+L’émotion **joy** a la sensibilité la plus élevée (0.89) cela signifie que le modèle arrive à trouver tous les textes de joie.
+Cependant sa spécificité est très faible (0.38). Il y a donc un fort biais le modèle prédit pratiquement que de la joie. Malgré cela la joie obtient quand même la meilleure balanced accuracy (0.63) du modèle 
 
-De manière globale, les résultats montrent une amélioration de la détection des émotions par rapport 
+La validation croisée (avec 10 plis) nous donne une précision d'environ 45.21%, ce résultat reste très proche du résultat que nous avions trouvé précédemment.
+Cela nous montre que les performances de notre modèle sont stables. Notre modèle permet donc de montrer la réelle capacité du classificateur Naive Bayes 
+à pouvoir traiter ce jeu de données avec les prétraitements que nous avons choisi. 
+
+De plus, de manière globale, les résultats montrent une amélioration de la détection des émotions par rapport 
 aux premières versions du modèle. Cela est dû à l’introduction d’un prétraitement plus stricte, notamment avec la conservation 
-des termes de négation. Cela permet d’obtenir des performances plus stables, bien que l'on puisse observer de véritables limites 
-concernant le classificateur bayésien naïf pour la reconnaissance des émotions dans des textes.
+des termes de négation. Le coefficient Kappa de 0.18 permet de souligner le fait que l'accord entre les prédictions et la réalité reste très faible.
+Tous ces résultats permettent de montrer la difficulté pour un modèle bayésien naïf de pouvoir distinguer correctement les émotions surtout quand ici la joie à l'air de dominer le processus de décision 
 
 # IV- Discussion
 
@@ -250,8 +274,11 @@ L’analyse effectuée précédemment montre que ce modèle a une bonne capacit�
 comme **joy**, sont beaucoup plus difficiles à reconnaître. Ces différences s’expliquent par le vocabulaire varié utilisé dans les textes.
 
 Le classificateur bayésien naïf repose sur une hypothèse d’indépendance entre les mots 
-qui ne permet pas de modéliser des textes avec du vocabulaire trop complexe. De plus, le déséquilibre 
-entre les classes d’émotions impacte les résultats en avantagent les émotions les plus représentées.
+qui ne permet pas de modéliser des textes avec du vocabulaire trop complexe. De plus, même si les classes sont équilibrées en nombre,
+le déséquilibre du au mots (certains mots peuvent être plus prédictifs pour une classe que pour une autre) impacte les résultats. 
+
+Lors de la validation croisée nous avons remarqué une augmentation de la sensibilité pour la classe Joy(0.88) par rapport aux tests que nous avions fait juste avant,
+cela peut laisser penser que le vocabulaire qui est associé à la joie dans ce dataset est devenu assez important dans le calcul bayésien.
 
 Ces observations montrent que des méthodes simples peuvent fournir des résultats corrects et facilement
 interprétables, tout en révélant rapidement leurs limites lorsque les données deviennent plus complexes, 
