@@ -270,15 +270,12 @@ Tous ces résultats permettent de montrer la difficulté pour un modèle bayési
 
 Les résultats obtenus montrent que le classificateur bayésien naïf, combiné à la représentation 
 TF-IDF, est capable d’identifier certaines émotions à partir des textes, mais avec différentes performances selon les classes. 
-L’analyse effectuée précédemment montre que ce modèle a une bonne capacité à détecter l’émotion **fear**, tandis que d’autres émotions, 
-comme **joy**, sont beaucoup plus difficiles à reconnaître. Ces différences s’expliquent par le vocabulaire varié utilisé dans les textes.
+L’analyse effectuée précédemment montre que ce modèle a développé une forte capacité à identifier l'émotion joy au détriment des émotions fear et anger.
+Ces différences s’expliquent par le vocabulaire varié utilisé dans les textes.
 
 Le classificateur bayésien naïf repose sur une hypothèse d’indépendance entre les mots 
 qui ne permet pas de modéliser des textes avec du vocabulaire trop complexe. De plus, même si les classes sont équilibrées en nombre,
 le déséquilibre du au mots (certains mots peuvent être plus prédictifs pour une classe que pour une autre) impacte les résultats. 
-
-Lors de la validation croisée nous avons remarqué une augmentation de la sensibilité pour la classe Joy(0.88) par rapport aux tests que nous avions fait juste avant,
-cela peut laisser penser que le vocabulaire qui est associé à la joie dans ce dataset est devenu assez important dans le calcul bayésien.
 
 Ces observations montrent que des méthodes simples peuvent fournir des résultats corrects et facilement
 interprétables, tout en révélant rapidement leurs limites lorsque les données deviennent plus complexes, 
