@@ -41,11 +41,29 @@ Après le prétraitement, les documents textuels sont transformés en une repré
 numérique à l’aide de la méthode TF-IDF. Cette méthode permet d'observer l’importance 
 des mots en fonction de leur fréquence dans un document et de leur rareté dans l’ensemble 
 du corpus.
-
+Pour améliorer la capacité du modèle à capturer le contexte émotionnel, nous utilisons 
+des **bi-grammes** en plus des mots individuels. Un bi-gramme est une séquence de deux 
+mots consécutifs (par exemple "not happy", "very sad"). Cette approche permet au modèle 
+de mieux comprendre les nuances de sentiment que des mots isolés ne pourraient pas capturer.
 Les données sont divisées en un ensemble d’apprentissage et un ensemble de test dans le
 but d’évaluer les performances du modèle sur des données non vues lors de l’entraînement.
 
 Le modèle que nous allons utiliser est un **classificateur bayésien naïf**.
+
+*  **Installation des packages nécessaires :**  
+
+```{r}
+
+if(!require("dplyr")) install.packages("dplyr")
+if(!require("kableExtra")) install.packages("kableExtra")
+if(!require("tm")) install.packages("tm")
+if(!require("MASS")) install.packages("MASS") 
+if(!require("e1071")) install.packages("e1071")
+
+```
+
+
+*  **Chargement des packages nécessaires :**
 
 ```{r}
 
@@ -115,10 +133,23 @@ corpus
 
 
 ```{r}
+# Création d'un tokenizer pour capturer les mots seuls ET les bi-grammes (sans RWeka)
+BigramTokenizer <- function(x) {
+  words_list <- unlist(strsplit(as.character(x), " +"))
+  # Unigrammes (mots seuls)
+  unigrams <- words_list
+  # Bigrammes (paires de mots consécutifs)
+  bigrams <- if(length(words_list) > 1) {
+    sapply(1:(length(words_list)-1), function(i) paste(words_list[i], words_list[i+1]))
+  } else character(0)
+  # Combinaison des deux
+  c(unigrams, bigrams)
+}
 
 dtm <- DocumentTermMatrix(
   corpus,
   control = list(
+    tokenize = BigramTokenizer,
     weighting = weightTfIdf,
     bounds = list(global = c(5, Inf)),
     wordLengths = c(2, Inf)

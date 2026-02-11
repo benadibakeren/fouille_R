@@ -454,25 +454,64 @@ manière négative.</p>
 <p>Après le prétraitement, les documents textuels sont transformés en
 une représentation numérique à l’aide de la méthode TF-IDF. Cette
 méthode permet d’observer l’importance des mots en fonction de leur
-fréquence dans un document et de leur rareté dans l’ensemble du
-corpus.</p>
-<p>Les données sont divisées en un ensemble d’apprentissage et un
-ensemble de test dans le but d’évaluer les performances du modèle sur
-des données non vues lors de l’entraînement.</p>
+fréquence dans un document et de leur rareté dans l’ensemble du corpus.
+Pour améliorer la capacité du modèle à capturer le contexte émotionnel,
+nous utilisons des <strong>bi-grammes</strong> en plus des mots
+individuels. Un bi-gramme est une séquence de deux mots consécutifs (par
+exemple “not happy”, “very sad”). Cette approche permet au modèle de
+mieux comprendre les nuances de sentiment que des mots isolés ne
+pourraient pas capturer. Les données sont divisées en un ensemble
+d’apprentissage et un ensemble de test dans le but d’évaluer les
+performances du modèle sur des données non vues lors de
+l’entraînement.</p>
 <p>Le modèle que nous allons utiliser est un <strong>classificateur
 bayésien naïf</strong>.</p>
+<ul>
+<li><strong>Installation des packages nécessaires :</strong></li>
+</ul>
+<pre class="r"><code>if(!require(&quot;dplyr&quot;)) install.packages(&quot;dplyr&quot;)</code></pre>
+<pre><code>## Loading required package: dplyr</code></pre>
+<pre><code>## 
+## Attaching package: &#39;dplyr&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:stats&#39;:
+## 
+##     filter, lag</code></pre>
+<pre><code>## The following objects are masked from &#39;package:base&#39;:
+## 
+##     intersect, setdiff, setequal, union</code></pre>
+<pre class="r"><code>if(!require(&quot;kableExtra&quot;)) install.packages(&quot;kableExtra&quot;)</code></pre>
+<pre><code>## Loading required package: kableExtra</code></pre>
+<pre><code>## 
+## Attaching package: &#39;kableExtra&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
+## 
+##     group_rows</code></pre>
+<pre class="r"><code>if(!require(&quot;tm&quot;)) install.packages(&quot;tm&quot;)</code></pre>
+<pre><code>## Loading required package: tm</code></pre>
+<pre><code>## Loading required package: NLP</code></pre>
+<pre class="r"><code>if(!require(&quot;MASS&quot;)) install.packages(&quot;MASS&quot;) </code></pre>
+<pre><code>## Loading required package: MASS</code></pre>
+<pre><code>## 
+## Attaching package: &#39;MASS&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:dplyr&#39;:
+## 
+##     select</code></pre>
+<pre class="r"><code>if(!require(&quot;e1071&quot;)) install.packages(&quot;e1071&quot;)</code></pre>
+<pre><code>## Loading required package: e1071</code></pre>
+<ul>
+<li><strong>Chargement des packages nécessaires :</strong></li>
+</ul>
 <pre class="r"><code>library(e1071)
 library(caret)</code></pre>
 <pre><code>## Loading required package: ggplot2</code></pre>
-<pre><code>## Loading required package: lattice</code></pre>
-<pre class="r"><code>library(tm) #texte brut en texte numérique</code></pre>
-<pre><code>## Loading required package: NLP</code></pre>
 <pre><code>## 
-## Attaching package: &#39;NLP&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:ggplot2&#39;:
+## Attaching package: &#39;ggplot2&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:NLP&#39;:
 ## 
 ##     annotate</code></pre>
-<pre class="r"><code>library(SnowballC) #stemming</code></pre>
+<pre><code>## Loading required package: lattice</code></pre>
+<pre class="r"><code>library(tm) #texte brut en texte numérique
+library(SnowballC) #stemming</code></pre>
 <div id="chargement-des-données" class="section level2">
 <h2>Chargement des données</h2>
 <pre class="r"><code>data &lt;- read.csv(&quot;Emotion_classify_Data.csv&quot;, stringsAsFactors = FALSE)
@@ -544,9 +583,23 @@ corpus</code></pre>
 <pre><code>## &lt;&lt;VCorpus&gt;&gt;
 ## Metadata:  corpus specific: 0, document level (indexed): 0
 ## Content:  documents: 5937</code></pre>
-<pre class="r"><code>dtm &lt;- DocumentTermMatrix(
+<pre class="r"><code># Création d&#39;un tokenizer pour capturer les mots seuls ET les bi-grammes (sans RWeka)
+BigramTokenizer &lt;- function(x) {
+  words_list &lt;- unlist(strsplit(as.character(x), &quot; +&quot;))
+  # Unigrammes (mots seuls)
+  unigrams &lt;- words_list
+  # Bigrammes (paires de mots consécutifs)
+  bigrams &lt;- if(length(words_list) &gt; 1) {
+    sapply(1:(length(words_list)-1), function(i) paste(words_list[i], words_list[i+1]))
+  } else character(0)
+  # Combinaison des deux
+  c(unigrams, bigrams)
+}
+
+dtm &lt;- DocumentTermMatrix(
   corpus,
   control = list(
+    tokenize = BigramTokenizer,
     weighting = weightTfIdf,
     bounds = list(global = c(5, Inf)),
     wordLengths = c(2, Inf)
@@ -556,10 +609,10 @@ corpus</code></pre>
 <pre class="r"><code>dtm &lt;- removeSparseTerms(dtm, 0.99)
 
 dtm</code></pre>
-<pre><code>## &lt;&lt;DocumentTermMatrix (documents: 5937, terms: 152)&gt;&gt;
-## Non-/sparse entries: 26032/876392
+<pre><code>## &lt;&lt;DocumentTermMatrix (documents: 5937, terms: 169)&gt;&gt;
+## Non-/sparse entries: 28514/974839
 ## Sparsity           : 97%
-## Maximal term length: 9
+## Maximal term length: 11
 ## Weighting          : term frequency - inverse document frequency (normalized) (tf-idf)</code></pre>
 <pre class="r"><code>set.seed(123)
 
@@ -597,44 +650,44 @@ conf_matrix</code></pre>
 ## 
 ##           Reference
 ## Prediction anger fear joy
-##      anger   123  100  43
-##      fear     12   49   5
-##      joy     265  238 352
+##      anger   131   94  34
+##      fear     18   58  12
+##      joy     251  235 354
 ## 
 ## Overall Statistics
-##                                          
-##                Accuracy : 0.4414         
-##                  95% CI : (0.413, 0.4702)
-##     No Information Rate : 0.337          
-##     P-Value [Acc &gt; NIR] : 5.329e-14      
-##                                          
-##                   Kappa : 0.1583         
-##                                          
-##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16      
+##                                           
+##                Accuracy : 0.4575          
+##                  95% CI : (0.4288, 0.4863)
+##     No Information Rate : 0.337           
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.1827          
+##                                           
+##  Mcnemar&#39;s Test P-Value : &lt; 2.2e-16       
 ## 
 ## Statistics by Class:
 ## 
 ##                      Class: anger Class: fear Class: joy
-## Sensitivity                0.3075     0.12661     0.8800
-## Specificity                0.8183     0.97875     0.3609
-## Pos Pred Value             0.4624     0.74242     0.4117
-## Neg Pred Value             0.6992     0.69848     0.8554
-## Precision                  0.4624     0.74242     0.4117
-## Recall                     0.3075     0.12661     0.8800
-## F1                         0.3694     0.21634     0.5610
+## Sensitivity                0.3275     0.14987     0.8850
+## Specificity                0.8374     0.96250     0.3825
+## Pos Pred Value             0.5058     0.65909     0.4214
+## Neg Pred Value             0.7101     0.70064     0.8674
+## Precision                  0.5058     0.65909     0.4214
+## Recall                     0.3275     0.14987     0.8850
+## F1                         0.3976     0.24421     0.5710
 ## Prevalence                 0.3370     0.32603     0.3370
-## Detection Rate             0.1036     0.04128     0.2965
-## Detection Prevalence       0.2241     0.05560     0.7203
-## Balanced Accuracy          0.5629     0.55268     0.6204</code></pre>
+## Detection Rate             0.1104     0.04886     0.2982
+## Detection Prevalence       0.2182     0.07414     0.7077
+## Balanced Accuracy          0.5824     0.55619     0.6337</code></pre>
 <pre class="r"><code>#Indicateurs de performance
 conf_matrix$overall[c(&quot;Accuracy&quot;, &quot;Kappa&quot;)]</code></pre>
 <pre><code>##  Accuracy     Kappa 
-## 0.4414490 0.1583334</code></pre>
+## 0.4574558 0.1827035</code></pre>
 <pre class="r"><code>conf_matrix$byClass[, c(&quot;F1&quot;, &quot;Sensitivity&quot;, &quot;Specificity&quot;, &quot;Balanced Accuracy&quot;)]</code></pre>
 <pre><code>##                     F1 Sensitivity Specificity Balanced Accuracy
-## Class: anger 0.3693694    0.307500   0.8182973         0.5628987
-## Class: fear  0.2163355    0.126615   0.9787500         0.5526825
-## Class: joy   0.5609562    0.880000   0.3608640         0.6204320</code></pre>
+## Class: anger 0.3975721   0.3275000   0.8373571         0.5824285
+## Class: fear  0.2442105   0.1498708   0.9625000         0.5561854
+## Class: joy   0.5709677   0.8850000   0.3824651         0.6337325</code></pre>
 </div>
 <div id="iii--résultats" class="section level1">
 <h1>III- Résultats</h1>
