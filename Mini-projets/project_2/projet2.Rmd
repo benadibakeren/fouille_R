@@ -201,7 +201,6 @@ On va ensuite réduire la taille de la matrice en supprimant les mots qui appara
 library(syuzhet)
 library(stringr)
 
-
 stopwords <- setdiff(stopwords("english"), c("no", "not", "nor", "never", "none", "t", "can", "cant"))
 removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
 
@@ -218,8 +217,9 @@ corpus <- tm_map(corpus, removePunctuation)
 corpus <- tm_map(corpus, removeWords, stopwords)
 corpus <- tm_map(corpus, stripWhitespace)
 
+
 dtm <- DocumentTermMatrix(corpus, control = list(weighting = weightTfIdf))
-dtm_mid <- removeSparseTerms(dtm, 0.98) 
+dtm_mid <- removeSparseTerms(dtm, 0.99) 
 data_tfidf <- as.data.frame(as.matrix(dtm_mid))
 
 dummies_subject <- as.data.frame(model.matrix(~ df$Subject - 1))
@@ -247,7 +247,7 @@ Nous avons ensuite exclu les termes de négation de la liste des mots vides avan
 Pour aider l'AFD nous avons également calculé un score de sentiment en utilisant le dictionnaire Syuzhet. La variable LexicalScore que nous avons créee va permettre de donner une valeur numérique directement basée sur le vocabulaire anglais.
 
 Ensuite nous avons utilisé la vectorisation TF-IDF qui permet de pénaliser les mots trop courants et valorise les mots rares. 
-Pour évier d'avoir une atrice avec des milliers de colonnes inutiles, nous avons supprimé les termes qui apparaissent dans moins de 2% des documents cela va permettre de réduire le bruit et le temps de calcul. 
+Pour évier d'avoir une atrice avec des milliers de colonnes inutiles, nous avons supprimé les termes qui apparaissent dans moins de 1% des documents cela va permettre de réduire le bruit et le temps de calcul. 
 
 Le sentiment d'un mot dépend souvent du contexte par exemple le mot "kill" est neutre dans un jeu vidéo mais il va être négatif dans un autre contexte. On a donc transformé la colonne Subject en variables binaires pour que l'AFD puisse relier le vocabulaire au sujet traité. 
 
@@ -338,6 +338,7 @@ On remarque également que les groupes ne sont pas parfaitement séparés (en ef
 
 Afin de valider statistiquement notre modèle nous allons calculer la matrice de confusion. Elle va nous permettre de comparer les prédictions du modèle par rapport à la réalité 
 
+
 ```{r,   warning = F}
 library(caret)
 
@@ -351,10 +352,27 @@ cat("\nPrécision sur les nouvelles données \n")
 cat(round(cm$overall['Accuracy'] * 100, 2), "%")
 ```
 
-On remarque que l'on obtient une précision de 47.9%, cela peut paraître bas mais il faut se rappeler qu'on a 4 choix possibles. Si on répondait au hasard, on aurait 25% de chances de répondre correctement. Donc notre modèle est presque deux fois meilleur que le hasard.
+```{r,   warning = F}
+
+stats_par_classe <- as.data.frame(cm$byClass)
+
+tableau_final <- stats_par_classe[, c("Precision", "Recall", "F1")]
+
+kable(tableau_final, digits = 3, caption = "Performance pour chaque émotion") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+
+```
+
+
+On remarque que l'on obtient une précision de 51.6%, cela peut paraître bas mais il faut se rappeler qu'on a 4 choix possibles. Si on répondait au hasard, on aurait 25% de chances de répondre correctement. Donc notre modèle est presque deux fois meilleur que le hasard.
 
 Lorsque l'on observe la matrice de confusion on remarque que le modèle ne se trompe pas beaucoup sur les sentiments forts.
 Il a résussi à bien classer 145 tweets positifs et 141 négatifs. La catégorie "Irrelevant" pose problème, on a seulement 74 bonnes réponses. Le modèle confond souvent "Neutre" avec " Negatif" ou "Positif". 
+
+Lorsque l'on regarde les performances pour chaque émotion on remarque que les catégories Positive et Negative obtiennent les meilleurs scores. Le modèle a une précision de 54.5% pour le positif et 53% pour le négatif.
+Cela signifie que lorsqu'un tweet est classé dans l'une des catégories le modèle a une chance sur deux d'avoir raison ce qui reste quand même significatif face à quatre classes possibles. 
+
+Les émotions comme irrelevant ou neutral sont beaucoup plus compliquées à être reconnues par notre modèle. 
 
 </DIV>
 
@@ -366,10 +384,13 @@ Il a résussi à bien classer 145 tweets positifs et 141 négatifs. La catégori
 ### <FONT color='#0066CC'><FONT size = 4> 5. Discussion et Conclusion </FONT></FONT>
 
 Dans ce projet, nous avons voulu voir si l'Analyse Factorielle Discriminante (AFD) était efficace pour pouvoir analyser des sentiments sur Twitter. 
-Nous avons obtenu une précision finale proche de 48% donc on peut dire que la méthode fonctionne plutôt correctement pour dégager les grandes tendances mais cette méthode a quand même ses limites. 
+Nous avons obtenu une précision finale de 51.6% donc on peut dire que la méthode fonctionne plutôt correctement pour dégager les grandes tendances mais cette méthode a quand même ses limites. 
 
 On a pu remarquer que le nettoyage des données était très important car sans tout le nettoyage, afin de tester le modèle sans aucune préparation on était à environ moins de 30% de précision ce qui signifie que notre modèle était presque pire que le hasard. 
 En effet lorsque l'on a rajouté l'ajout du score de sentiment (LexicalScore) et la prise en compte du contexte, les résultats étaient plus bons. Cela nous prouve que l'algorithme a besoin qu'on l'aide en lui donnant un contexte et en préparant bien les données en amont. 
+
+Enfin, on peut dire que l'AFD a permis de montrer une capacité à bien savoir distinguer les émotions fortes (positives et négatives) mais elle a du mal à identifier la neutralité 
+ou l'absence de sujet (irrelevant). Pour un modèle qui est purement statistique les résultats sont plutôt corrects car ça prouve que même sans comprendre le sens profond des phrases on peut quand même réussir à dégager des structures émotionnelles plutôt cohérentes. 
 
 </DIV>
 
@@ -380,7 +401,7 @@ En effet lorsque l'on a rajouté l'ajout du score de sentiment (LexicalScore) et
 
 ### <FONT color='#0066CC'><FONT size = 4> 6. Travaux futurs </FONT></FONT>
 
-Si l'on devait poursuire ce projet pour dépasser la barre des 48% de précision, il faudrait je pense arreter l'approche statistique classique (AFD sur TF-IDF) pour passer au Deep Learning. 
+Si l'on devait poursuire ce projet pour dépasser la barre des 52% de précision, il faudrait je pense arreter l'approche statistique classique (AFD sur TF-IDF) pour passer au Deep Learning. 
 
 En faisant quelques recherches sur Kaggle nous sommes tombées sur un projet très intéressant qui utilise DistilBERT.
 La méthode ne consiste pas seulement à compter la fréquence des mots, elle essaye également de comprendre le sens de la phrase, avec DistilBERT le modèle peut comprendre que le not est l'inverse de happy. 
