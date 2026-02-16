@@ -211,7 +211,7 @@ kable(table(full_data$label), caption = "Distribution des classes (0=Humain, 1=I
 
 Nous possèdons maintenant une très grande quantité de données, afin d'optimiser notre temps de calcul nous allons utiliser un échantillon de notre jeu de données.
 
-Nous allons prendre 20 000 textes humains et 20 000 textes fait par une IA (50/50).
+Nous allons prendre 10 000 textes humains et 10 000 textes fait par une IA (50/50).
 
 ```{r}
 
@@ -220,12 +220,12 @@ set.seed(123)
 # Humain
 df_humain <- full_data %>% 
   filter(label == 0) %>% 
-  sample_n(2000)
+  sample_n(10000)
 
 # IA 
 df_ia <- full_data %>% 
   filter(label == 1) %>% 
-  sample_n(2000)
+  sample_n(10000)
 
 # On fusionne les deux échantillons 
 df <- bind_rows(df_humain, df_ia)
@@ -338,13 +338,18 @@ cat("Nombre de termes uniques :", ncol(tfidf_data), "\n")
 
 ```{r}
 
+total_mots_depart <- ncol(tfidf_data)
 variances <- apply(tfidf_data, 2, var)
-top_indices <- order(variances, decreasing = TRUE)[1:min(30, length(variances))]
+top_indices <- order(variances, decreasing = TRUE)[1:min(500, length(variances))]
 tfidf_data_reduced <- tfidf_data[, top_indices]
 
 cat("Dimensions après réduction :", nrow(tfidf_data_reduced), "x", ncol(tfidf_data_reduced), "\n")
-
+cat("Nombre de mots total après nettoyage :", total_mots_depart, "\n")
+cat("Nombre de mots gardés pour l'analyse :", ncol(tfidf_data_reduced), "\n")
 ```
+
+Au départ notre matrice contenait des milliers de termes, pour éviter de saturer le modèle et éviter trop de bruits inutiles, nous avons décidé de ne garder que les 500 mots qui ont la plus forte variance
+cela permet de se concentrer sur les mots les plus parlants en quelque sorte afin de différencier l'IA de l'Humain. 
 
 *  **Combinaison avec la variable cible :**
 
@@ -362,6 +367,9 @@ cat("\nDistribution des classes :\n")
 print(table_dist)
 
 ```
+
+Pour transformer nos textes en chiffres on a utilisé la méthode TF-IDF. Cetet méthode permet de repérer les mots qui sont vraiment importants dans un texte tout en ignorant les mots trop communs.
+Dans notre code, on garde que les 500 mots les plus "discriminants" afin d'aider notre modèle à faire la différence. 
 
 </DIV>
 
@@ -470,6 +478,12 @@ ggplot(plot_data_gg, aes(x = LD1, fill = Class)) +
 
 ```
 
+Sur le graphique obtenu on peut observer deux "montagnes", on remarque qu'il y a un  chevauchement c'est l'endroit où notre modèle va faire des erreurs de confusion.
+
+Pour ce qui est du test de Wilks, on remarque qu'on obtient une valeur propre élevée, ce qui montre que l'axe LD1 explique bien la différence entre nos deux groupes. Le Wilks Lambda est très petit cela montre que les variables choisies sont pertinentes pour classer les textes. 
+La p-value est très petite aussi cela prouve que nos résultats ne sont pas dus au hasard. 
+
+
 </DIV>
 
 <hr style="border: 1px solid gray">
@@ -498,7 +512,7 @@ levels(df_lda$generated) <- make.names(levels(df_lda$generated))
 set.seed(123)
 train_control <- trainControl(
   method = "cv",
-  number = 5,
+  number = 10,
   savePredictions = "final",
   classProbs = TRUE
 )
@@ -516,7 +530,7 @@ print(model_cv)
 
 #### <FONT color='#0066CC'><FONT size = 3> 5.1 Évaluation des performances </FONT></FONT>
 
-Une fois que le modèle a bien été entraîné sur les 5 blocs, nous pouvons examiner les résultats moyens
+Une fois que le modèle a bien été entraîné sur les 10 blocs, nous pouvons examiner les résultats moyens
 en particulier l'**Accuracy** qui nous indique le pourcentage de textes correctement classifiés et 
 le **Kappa** qui va prendre en compte le hasard pour rendre l'évaluation plus fiable.
 
@@ -526,11 +540,10 @@ cv_accuracy <- max(model_cv$results$Accuracy)
 cv_kappa <- model_cv$results$Kappa[which.max(model_cv$results$Accuracy)]
 
 metrics <- data.frame(
-  Mesure = c("Accuracy", "Kappa (CV 5-fold)", "Sensibilité (Rappel)"),
+  Mesure = c("Accuracy", "Kappa (CV 10-fold)"),
   Valeur = c(
     paste0(round(cv_accuracy * 100, 2), " %"),
-    round(cv_kappa, 3),
-    "Voir matrice de confusion"
+    round(cv_kappa, 3)
   )
 )
 
@@ -639,7 +652,6 @@ if (exists("cm_cv") && !is.null(cm_cv)) {
 
 cat("Nombre total de textes traités :", nrow(df_lda), "\n")
 cat("Nombre de classes (binaire) : 2 (Humain vs IA)\n")
-cat("Nombre de features TF-IDF initiales :", ncol(X), "\n")
 cat("Nombre de features après sélection :", ncol(tfidf_data_reduced), "\n")
 cat("Nombre d'axes discriminants :", ncol(df_lda) - 1, "\n\n")
 
@@ -667,6 +679,16 @@ if (exists("cm_cv") && !is.null(cm_cv)) {
 
 ```
 
+
+Les résultats obtenus après la validation croisée sont très bons. On obtient une précision de 97.02% notre modèle réussit à classer presque parfaitement les textes. 
+Le coefficient Kappa de 0.94 confirme que ce n'est pas dû à du hasard. Cela montre que la combinaison entre l'AFD qui permet de simplifier les données et le classifieur 
+Bayésien fonctionnent très bien ensemble pour ce genre de projet. 
+
+Lorsque l'on regarde la matrice de confusion on voit que le modèle reste très équilibré, 
+sur un gros volume de texte, il y a 322 cas de textes humains détectés comme une IA (faux positifs) et 274 cas d'IA détectées comme humains (faux négatifs). 
+
+
+
 </DIV>
 
 <hr style="border: 1px solid gray">
@@ -683,25 +705,24 @@ Tout d'abord, nous avons effectué un prétraitement des données, en nettoyant 
 Ensuite, nous avons extrait des caractéristiques à partir des textes en utilisant la vectorisation TF-IDF, ce qui nous a permis de transformer les textes en données numériques 
 exploitables pour nos modèles. Nous avons ensuite appliqué l'Analyse Factorielle Discriminante (AFD) pour réduire la dimensionnalité tout en préservant les informations 
 importantes, ce qui nous a permis d'identifier les axes qui séparent au mieux les textes humains des textes générés par l'IA.  
-Enfin, nous avons utilisé un classifieur Bayésien Naïf sur les axes de l'AFD, avec validation croisée en 5 blocs pour évaluer la performance du modèle.
+Enfin, nous avons utilisé un classifieur Bayésien Naïf sur les axes de l'AFD, avec validation croisée en 10 blocs pour évaluer la performance du modèle.
 
 **Résultats obtenus :**
 
 Notre modèle a atteint les performances suivantes :
-- **Textes humains** : 77.32% correctement identifiés
-- **Textes générés par IA** : 79.16% correctement identifiés
+- **Textes humains** : 96.8% correctement identifiés
+- **Textes générés par IA** : 97.25% correctement identifiés
 - Une performance équilibrée entre les deux classes, ce qui est positif
 
 Cela signifie que notre système détecte légèrement mieux les textes IA que les textes humains, avec une petite différence.
 
 **Conclusions finales :**
 
-Combiner AFD et Bayésien naïf est une approche efficace pour détecter les textes humains des textes IA. 
-Nous avons obtenu de bons résultats avec une performance d'environ 77-79 %, ce qui signifie que notre modèle est capable de 
-détecter correctement la majorité des textes, même s'il existe encore une part d'erreur (environ 20-23%).
+Même si les résultats sont excellents, il faut rester sceptique car les modèles de langages évoluent constamment dans le but d'imiter le style humain.
+On peut aussi penser que si les résultats sont excellents ca peut être du au fait que les textes de notre jeu de données proviennent de modèles d'IA spécifiques. Peut être que dans un scénario réel avec plusieurs modèle d'IA différentes l'efficacité de notre modèle baisserait un peu. 
 
-On peut donc en conclure qu'il est possible de différencier les textes générés par une IA de ceux écrits par des humains avec une bonne précision, 
-mais il reste encore une marge d'amélioration pour atteindre une performance parfaite.
+Cependant pour l'instant grâce à ce projet on a pu montrer que l'IA laissait des "traces" qu'il est encore possible de capturer. Cependant plus on va avancer dans le temps et plus la détection sera compliquée et restera un défi technologique dans les années à venir. 
+
 </DIV>
 
 <hr style="border: 1px solid gray">
